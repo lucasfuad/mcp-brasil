@@ -55,8 +55,9 @@
 
 - [x] **Elasticsearch POST API** — DataJud uses POST with JSON body (not GET). Client uses `httpx.AsyncClient.post()` directly instead of shared `http_get()`. Rate limited at 30 req/min.
 - [ ] **API key required** — Feature requires `DATAJUD_API_KEY` env var. Auto-discovery skips the feature if not set. Registration: https://datajud.cnj.jus.br
-- [ ] **Elasticsearch query DSL limited** — Current implementation uses basic `match` queries. Advanced features (bool queries, range filters, aggregations) not yet implemented.
-- [ ] **No pagination (offset/from)** — DataJud Elasticsearch supports `from` parameter for pagination. Current implementation only uses `size`. Tools could benefit from pagination support.
+- [x] **Elasticsearch query DSL limited** — Resolvido. `buscar_processos` migrado de `_all` (deprecated) para `multi_match`. Adicionado `buscar_processos_avancado` com `bool.must` query por códigos (classe.codigo + orgaoJulgador.codigo).
+- [x] **No pagination (offset/from)** — Resolvido. Implementado `search_after` com `sort` por `@timestamp` (padrão recomendado pela Wiki DataJud). Token de paginação retornado para o LLM.
+- [x] **Tribunais incompletos** — Resolvido. Adicionados 27 TREs (tre-ac a tre-to) e 3 TJMs (tjmmg, tjmrs, tjmsp). Total: 91 tribunais cobrindo toda a documentação oficial.
 
 ## TSE Feature
 
@@ -96,4 +97,4 @@
 
 ---
 
-*Last updated: 2026-03-22*
+*Last updated: 2026-03-23*

@@ -159,6 +159,55 @@ class TestBuscarProcessosPorOrgao:
         assert "Nenhum processo" in result
 
 
+class TestBuscarProcessosAvancado:
+    @pytest.mark.asyncio
+    async def test_formats_table_with_pagination(self) -> None:
+        mock_processos = [
+            Processo(
+                numero="0001234",
+                classe="Execução Fiscal",
+                assunto="Dívida Ativa",
+                orgao_julgador="Vara de Execuções",
+                data_ajuizamento="2024-01-01",
+            )
+        ]
+        with patch(
+            f"{MODULE}.buscar_processos_avancado",
+            new_callable=AsyncMock,
+            return_value=(mock_processos, [1681366085550]),
+        ):
+            result = await tools.buscar_processos_avancado(
+                tribunal="tjdft", classe_codigo=1116, orgao_codigo=13597
+            )
+        assert "Execução Fiscal" in result
+        assert "1681366085550" in result
+        assert "Próxima página" in result
+
+    @pytest.mark.asyncio
+    async def test_empty(self) -> None:
+        with patch(
+            f"{MODULE}.buscar_processos_avancado",
+            new_callable=AsyncMock,
+            return_value=([], None),
+        ):
+            result = await tools.buscar_processos_avancado(tribunal="tjdft")
+        assert "Nenhum processo" in result
+
+    @pytest.mark.asyncio
+    async def test_no_next_page(self) -> None:
+        mock_processos = [
+            Processo(numero="0001234", classe="Ação Penal")
+        ]
+        with patch(
+            f"{MODULE}.buscar_processos_avancado",
+            new_callable=AsyncMock,
+            return_value=(mock_processos, None),
+        ):
+            result = await tools.buscar_processos_avancado(tribunal="tjsp")
+        assert "0001234" in result
+        assert "Próxima página" not in result
+
+
 class TestConsultarMovimentacoes:
     @pytest.mark.asyncio
     async def test_formats_table(self) -> None:

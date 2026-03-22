@@ -214,6 +214,73 @@ async def buscar_processos_por_orgao(
     return header + markdown_table(["Número", "Classe", "Assunto", "Ajuizamento"], rows)
 
 
+async def buscar_processos_avancado(
+    tribunal: str = "tjsp",
+    classe_codigo: int | None = None,
+    orgao_codigo: int | None = None,
+    tamanho: int = DEFAULT_PAGE_SIZE,
+    search_after: str | None = None,
+) -> str:
+    """Busca avançada de processos com filtros por código e paginação.
+
+    Permite combinar filtros (classe processual + órgão julgador) e paginar
+    resultados grandes usando search_after (cursor do Elasticsearch).
+
+    Use as classes processuais do resource data://classes-processuais
+    e os códigos de órgão retornados pelo campo orgaoJulgador.codigo.
+
+    Para paginar: passe o valor de search_after retornado na resposta anterior.
+
+    Args:
+        tribunal: Sigla do tribunal (ex: tjsp, trf1, tjdft). Default: tjsp.
+        classe_codigo: Código da classe processual (ex: 1116 = Execução Fiscal).
+        orgao_codigo: Código do órgão julgador (ex: 13597).
+        tamanho: Quantidade de resultados por página (1-10000). Default: 10.
+        search_after: Token de paginação retornado pela consulta anterior.
+
+    Returns:
+        Tabela com processos e token para próxima página.
+    """
+    token: list[int] | None = None
+    if search_after is not None:
+        try:
+            token = [int(search_after)]
+        except (ValueError, TypeError):
+            pass
+
+    processos, next_token = await client.buscar_processos_avancado(
+        tribunal=tribunal,
+        classe_codigo=classe_codigo,
+        orgao_codigo=orgao_codigo,
+        tamanho=tamanho,
+        search_after=token,
+    )
+
+    if not processos:
+        return f"Nenhum processo encontrado no {tribunal.upper()} com os filtros informados."
+
+    rows = [
+        (
+            (p.numero or "—")[:25],
+            (p.classe or "—")[:30],
+            (p.assunto or "—")[:30],
+            (p.orgao_julgador or "—")[:25],
+            (p.data_ajuizamento or "—")[:10],
+        )
+        for p in processos
+    ]
+    header = f"Processos — {tribunal.upper()} ({len(processos)} resultados):\n\n"
+    table = markdown_table(
+        ["Número", "Classe", "Assunto", "Órgão Julgador", "Ajuizamento"], rows
+    )
+
+    pagination = ""
+    if next_token:
+        pagination = f"\n\n**Próxima página:** use search_after=\"{next_token[0]}\""
+
+    return header + table + pagination
+
+
 async def consultar_movimentacoes(
     numero_processo: str,
     tribunal: str = "tjsp",

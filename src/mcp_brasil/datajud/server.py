@@ -10,6 +10,7 @@ from .resources import classes_processuais, info_api, tribunais_disponiveis
 from .tools import (
     buscar_processo_por_numero,
     buscar_processos,
+    buscar_processos_avancado,
     buscar_processos_por_assunto,
     buscar_processos_por_classe,
     buscar_processos_por_orgao,
@@ -18,12 +19,13 @@ from .tools import (
 
 mcp = FastMCP("mcp-brasil-datajud")
 
-# Tools (6)
+# Tools (7)
 mcp.tool(buscar_processos)
 mcp.tool(buscar_processo_por_numero)
 mcp.tool(buscar_processos_por_classe)
 mcp.tool(buscar_processos_por_assunto)
 mcp.tool(buscar_processos_por_orgao)
+mcp.tool(buscar_processos_avancado)
 mcp.tool(consultar_movimentacoes)
 
 # Resources

@@ -160,3 +160,81 @@ class TestTribunalValidation:
     def test_case_insensitive(self) -> None:
         url = client._tribunal_url("TJSP")
         assert "tjsp" in url
+
+    def test_tre_with_hyphen(self) -> None:
+        url = client._tribunal_url("tre-sp")
+        assert "tre-sp" in url
+
+    def test_tjm_militar(self) -> None:
+        url = client._tribunal_url("tjmmg")
+        assert "tjmmg" in url
+
+
+# ---------------------------------------------------------------------------
+# buscar_processos_avancado
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarProcessosAvancado:
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_bool_query_with_codes(self) -> None:
+        tjdft_url = f"{DATAJUD_API_BASE}tjdft/_search"
+        respx.post(tjdft_url).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {
+                                    "numeroProcesso": "0001234",
+                                    "classe": {"codigo": 1116, "nome": "Execução Fiscal"},
+                                    "assuntos": [{"nome": "Dívida Ativa"}],
+                                    "tribunal": "TJDFT",
+                                    "orgaoJulgador": {"codigo": 13597, "nome": "Vara Fiscal"},
+                                    "dataAjuizamento": "2024-01-01",
+                                },
+                                "sort": [1681366085550],
+                            }
+                        ]
+                    }
+                },
+            )
+        )
+        processos, token = await client.buscar_processos_avancado(
+            tribunal="tjdft", classe_codigo=1116, orgao_codigo=13597
+        )
+        assert len(processos) == 1
+        assert processos[0].classe == "Execução Fiscal"
+        assert token == [1681366085550]
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_search_after_pagination(self) -> None:
+        tjdft_url = f"{DATAJUD_API_BASE}tjdft/_search"
+        respx.post(tjdft_url).mock(
+            return_value=httpx.Response(200, json={"hits": {"hits": []}})
+        )
+        processos, token = await client.buscar_processos_avancado(
+            tribunal="tjdft", search_after=[1681366085550]
+        )
+        assert processos == []
+        assert token is None
+
+
+# ---------------------------------------------------------------------------
+# _extract_sort_token
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSortToken:
+    def test_extracts_from_last_hit(self) -> None:
+        hits = [{"sort": [100]}, {"sort": [200]}]
+        assert client._extract_sort_token(hits) == [200]
+
+    def test_returns_none_for_empty(self) -> None:
+        assert client._extract_sort_token([]) is None
+
+    def test_returns_none_for_missing_sort(self) -> None:
+        assert client._extract_sort_token([{"_source": {}}]) is None

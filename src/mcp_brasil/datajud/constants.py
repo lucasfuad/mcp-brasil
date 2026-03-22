@@ -5,7 +5,7 @@ DATAJUD_API_BASE = "https://api-publica.datajud.cnj.jus.br/api_publica_"
 
 # Default pagination
 DEFAULT_PAGE_SIZE = 10
-MAX_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 10000
 
 # Tribunal endpoint mapping (sigla → sufixo da URL)
 TRIBUNAIS: dict[str, str] = {
@@ -75,6 +75,38 @@ TRIBUNAIS: dict[str, str] = {
     "tjse": "tjse",
     "tjsp": "tjsp",
     "tjto": "tjto",
+    # Tribunais Regionais Eleitorais
+    "tre-ac": "tre-ac",
+    "tre-al": "tre-al",
+    "tre-am": "tre-am",
+    "tre-ap": "tre-ap",
+    "tre-ba": "tre-ba",
+    "tre-ce": "tre-ce",
+    "tre-dft": "tre-dft",
+    "tre-es": "tre-es",
+    "tre-go": "tre-go",
+    "tre-ma": "tre-ma",
+    "tre-mg": "tre-mg",
+    "tre-ms": "tre-ms",
+    "tre-mt": "tre-mt",
+    "tre-pa": "tre-pa",
+    "tre-pb": "tre-pb",
+    "tre-pe": "tre-pe",
+    "tre-pi": "tre-pi",
+    "tre-pr": "tre-pr",
+    "tre-rj": "tre-rj",
+    "tre-rn": "tre-rn",
+    "tre-ro": "tre-ro",
+    "tre-rr": "tre-rr",
+    "tre-rs": "tre-rs",
+    "tre-sc": "tre-sc",
+    "tre-se": "tre-se",
+    "tre-sp": "tre-sp",
+    "tre-to": "tre-to",
+    # Justiça Militar Estadual
+    "tjmmg": "tjmmg",
+    "tjmrs": "tjmrs",
+    "tjmsp": "tjmsp",
 }
 
 # Nomes legíveis dos tribunais
@@ -101,6 +133,38 @@ TRIBUNAL_NOMES: dict[str, str] = {
     "tjce": "Tribunal de Justiça do Ceará",
     "tjgo": "Tribunal de Justiça de Goiás",
     "tjdft": "Tribunal de Justiça do Distrito Federal e Territórios",
+    # TREs
+    "tre-ac": "Tribunal Regional Eleitoral do Acre",
+    "tre-al": "Tribunal Regional Eleitoral de Alagoas",
+    "tre-am": "Tribunal Regional Eleitoral do Amazonas",
+    "tre-ap": "Tribunal Regional Eleitoral do Amapá",
+    "tre-ba": "Tribunal Regional Eleitoral da Bahia",
+    "tre-ce": "Tribunal Regional Eleitoral do Ceará",
+    "tre-dft": "Tribunal Regional Eleitoral do Distrito Federal",
+    "tre-es": "Tribunal Regional Eleitoral do Espírito Santo",
+    "tre-go": "Tribunal Regional Eleitoral de Goiás",
+    "tre-ma": "Tribunal Regional Eleitoral do Maranhão",
+    "tre-mg": "Tribunal Regional Eleitoral de Minas Gerais",
+    "tre-ms": "Tribunal Regional Eleitoral do Mato Grosso do Sul",
+    "tre-mt": "Tribunal Regional Eleitoral do Mato Grosso",
+    "tre-pa": "Tribunal Regional Eleitoral do Pará",
+    "tre-pb": "Tribunal Regional Eleitoral da Paraíba",
+    "tre-pe": "Tribunal Regional Eleitoral de Pernambuco",
+    "tre-pi": "Tribunal Regional Eleitoral do Piauí",
+    "tre-pr": "Tribunal Regional Eleitoral do Paraná",
+    "tre-rj": "Tribunal Regional Eleitoral do Rio de Janeiro",
+    "tre-rn": "Tribunal Regional Eleitoral do Rio Grande do Norte",
+    "tre-ro": "Tribunal Regional Eleitoral de Rondônia",
+    "tre-rr": "Tribunal Regional Eleitoral de Roraima",
+    "tre-rs": "Tribunal Regional Eleitoral do Rio Grande do Sul",
+    "tre-sc": "Tribunal Regional Eleitoral de Santa Catarina",
+    "tre-se": "Tribunal Regional Eleitoral de Sergipe",
+    "tre-sp": "Tribunal Regional Eleitoral de São Paulo",
+    "tre-to": "Tribunal Regional Eleitoral de Tocantins",
+    # Justiça Militar
+    "tjmmg": "Tribunal de Justiça Militar de Minas Gerais",
+    "tjmrs": "Tribunal de Justiça Militar do Rio Grande do Sul",
+    "tjmsp": "Tribunal de Justiça Militar de São Paulo",
 }
 
 # Classes processuais comuns

@@ -13,7 +13,7 @@ CLIENT_MODULE = "mcp_brasil.datajud.client"
 
 class TestToolsRegistered:
     @pytest.mark.asyncio
-    async def test_all_6_tools_registered(self) -> None:
+    async def test_all_7_tools_registered(self) -> None:
         async with Client(mcp) as c:
             tool_list = await c.list_tools()
             names = {t.name for t in tool_list}
@@ -23,6 +23,7 @@ class TestToolsRegistered:
                 "buscar_processos_por_classe",
                 "buscar_processos_por_assunto",
                 "buscar_processos_por_orgao",
+                "buscar_processos_avancado",
                 "consultar_movimentacoes",
             }
             assert expected.issubset(names), f"Missing: {expected - names}"

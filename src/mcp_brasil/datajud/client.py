@@ -14,7 +14,7 @@ from typing import Any
 
 from mcp_brasil._shared.rate_limiter import RateLimiter
 
-from .constants import DATAJUD_API_BASE, DEFAULT_PAGE_SIZE, TRIBUNAIS
+from .constants import DATAJUD_API_BASE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, TRIBUNAIS
 from .schemas import (
     Assunto,
     Movimentacao,
@@ -74,6 +74,17 @@ def _parse_hits(data: Any) -> list[dict[str, Any]]:
         result = hits.get("hits", [])
         return result if isinstance(result, list) else []
     return []
+
+
+def _extract_sort_token(hits: list[dict[str, Any]]) -> list[Any] | None:
+    """Extract the sort value from the last hit for search_after pagination."""
+    if not hits:
+        return None
+    last = hits[-1]
+    sort_val = last.get("sort")
+    if isinstance(sort_val, list) and sort_val:
+        return sort_val
+    return None
 
 
 def _parse_processo(hit: dict[str, Any]) -> Processo:
@@ -181,8 +192,18 @@ async def buscar_processos(
     """Search processes in a tribunal by free text query."""
     url = _tribunal_url(tribunal)
     body: dict[str, Any] = {
-        "query": {"match": {"_all": query}},
-        "size": min(tamanho, 100),
+        "query": {
+            "multi_match": {
+                "query": query,
+                "fields": [
+                    "numeroProcesso",
+                    "classe.nome",
+                    "assuntos.nome",
+                    "orgaoJulgador.nome",
+                ],
+            }
+        },
+        "size": min(tamanho, MAX_PAGE_SIZE),
     }
     data = await _post(url, body)
     return [_parse_processo(h) for h in _parse_hits(data)]
@@ -215,7 +236,7 @@ async def buscar_processos_por_classe(
     url = _tribunal_url(tribunal)
     body: dict[str, Any] = {
         "query": {"match": {"classe.nome": classe}},
-        "size": min(tamanho, 100),
+        "size": min(tamanho, MAX_PAGE_SIZE),
     }
     data = await _post(url, body)
     return [_parse_processo(h) for h in _parse_hits(data)]
@@ -230,7 +251,7 @@ async def buscar_processos_por_assunto(
     url = _tribunal_url(tribunal)
     body: dict[str, Any] = {
         "query": {"match": {"assuntos.nome": assunto}},
-        "size": min(tamanho, 100),
+        "size": min(tamanho, MAX_PAGE_SIZE),
     }
     data = await _post(url, body)
     return [_parse_processo(h) for h in _parse_hits(data)]
@@ -245,10 +266,49 @@ async def buscar_processos_por_orgao(
     url = _tribunal_url(tribunal)
     body: dict[str, Any] = {
         "query": {"match": {"orgaoJulgador.nome": orgao_julgador}},
-        "size": min(tamanho, 100),
+        "size": min(tamanho, MAX_PAGE_SIZE),
     }
     data = await _post(url, body)
     return [_parse_processo(h) for h in _parse_hits(data)]
+
+
+async def buscar_processos_avancado(
+    tribunal: str = "tjsp",
+    classe_codigo: int | None = None,
+    orgao_codigo: int | None = None,
+    tamanho: int = DEFAULT_PAGE_SIZE,
+    search_after: list[Any] | None = None,
+) -> tuple[list[Processo], list[Any] | None]:
+    """Advanced search using Elasticsearch bool query with codes and pagination.
+
+    Returns a tuple of (processos, next_search_after_token).
+    The token can be passed back to continue pagination.
+    """
+    url = _tribunal_url(tribunal)
+
+    must_clauses: list[dict[str, Any]] = []
+    if classe_codigo is not None:
+        must_clauses.append({"match": {"classe.codigo": classe_codigo}})
+    if orgao_codigo is not None:
+        must_clauses.append({"match": {"orgaoJulgador.codigo": orgao_codigo}})
+
+    if not must_clauses:
+        must_clauses.append({"match_all": {}})
+
+    body: dict[str, Any] = {
+        "query": {"bool": {"must": must_clauses}},
+        "size": min(tamanho, MAX_PAGE_SIZE),
+        "sort": [{"@timestamp": {"order": "asc"}}],
+    }
+
+    if search_after is not None:
+        body["search_after"] = search_after
+
+    data = await _post(url, body)
+    hits = _parse_hits(data)
+    processos = [_parse_processo(h) for h in hits]
+    next_token = _extract_sort_token(hits)
+    return processos, next_token
 
 
 async def consultar_movimentacoes(
