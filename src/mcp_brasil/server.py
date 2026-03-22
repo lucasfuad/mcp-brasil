@@ -10,10 +10,17 @@ Usage:
 """
 
 import logging
+import time
 
+import mcp.types as mt
 from fastmcp import FastMCP
+from fastmcp.prompts import PromptResult
+from fastmcp.resources import ResourceResult
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools import ToolResult
 
 from ._shared.feature import FeatureRegistry
+from ._shared.lifespan import http_lifespan
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,8 +28,54 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp-brasil")
 
+
+# ---------------------------------------------------------------------------
+# Middleware — lightweight request logging
+# ---------------------------------------------------------------------------
+class RequestLoggingMiddleware(Middleware):
+    """Log all tool calls, resource reads, and prompt requests."""
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        name = context.message.name
+        logger.info("Tool call: %s", name)
+        start = time.monotonic()
+        result = await call_next(context)
+        elapsed = time.monotonic() - start
+        logger.info("Tool %s completed in %.2fs", name, elapsed)
+        return result
+
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[mt.ReadResourceRequestParams],
+        call_next: CallNext[mt.ReadResourceRequestParams, ResourceResult],
+    ) -> ResourceResult:
+        uri = context.message.uri
+        logger.info("Resource read: %s", uri)
+        return await call_next(context)
+
+    async def on_get_prompt(
+        self,
+        context: MiddlewareContext[mt.GetPromptRequestParams],
+        call_next: CallNext[mt.GetPromptRequestParams, PromptResult],
+    ) -> PromptResult:
+        name = context.message.name
+        logger.info("Prompt get: %s", name)
+        return await call_next(context)
+
+
+# ---------------------------------------------------------------------------
+# Server setup
+# ---------------------------------------------------------------------------
+
 # Create the root server
-mcp = FastMCP("mcp-brasil 🇧🇷")
+mcp = FastMCP("mcp-brasil 🇧🇷", lifespan=http_lifespan)
+
+# Add middleware
+mcp.add_middleware(RequestLoggingMiddleware())
 
 # Auto-discover and mount all features
 registry = FeatureRegistry()
