@@ -17,9 +17,9 @@ from .bacen.server import mcp as bacen
 from .transparencia.server import mcp as transparencia
 
 mcp = FastMCP("mcp-brasil 🇧🇷")
-mcp.mount("/ibge", ibge)
-mcp.mount("/bacen", bacen)
-mcp.mount("/transparencia", transparencia)
+mcp.mount(ibge, namespace="ibge")
+mcp.mount(bacen, namespace="bacen")
+mcp.mount(transparencia, namespace="transparencia")
 ```
 
 Isso viola o Open-Closed Principle: para adicionar uma feature, você precisa modificar um arquivo existente. Queremos que adicionar uma nova feature seja **zero-touch** no server raiz — basta criar o diretório com a convenção correta e ele é descoberto automaticamente.
@@ -41,7 +41,7 @@ mcp.mount("/ibge", ibge)
 FEATURES = ["ibge", "bacen", "transparencia"]
 for name in FEATURES:
     module = importlib.import_module(f".{name}.server", package="mcp_brasil")
-    mcp.mount(f"/{name}", module.mcp)
+    mcp.mount(module.mcp, namespace=name)
 ```
 - **Prós:** Centralizado, fácil de desabilitar
 - **Contras:** Ainda precisa editar a lista
@@ -52,7 +52,7 @@ for name in FEATURES:
 for _, name, ispkg in pkgutil.iter_modules(package.__path__):
     if ispkg and not name.startswith("_"):
         module = importlib.import_module(f".{name}.server", package="mcp_brasil")
-        mcp.mount(f"/{name}", module.mcp)
+        mcp.mount(module.mcp, namespace=name)
 ```
 - **Prós:** Zero-touch, padrão da comunidade Python (Flask, pytest, Django), Open-Closed compliant
 - **Contras:** "Mágica" implícita, precisa de convenção clara
@@ -256,14 +256,18 @@ class FeatureRegistry:
     def mount_all(self, root_server: FastMCP) -> None:
         """Monta todas as features descobertas no server raiz.
 
-        Cada feature é montada em /{feature_name}.
+        Cada feature é montada com namespace={feature_name}.
+        Isso prefixa automaticamente:
+        - Tools: {feature}_tool_name
+        - Resources: data://{feature}/resource_name
+        - Prompts: {feature}_prompt_name
 
         Args:
             root_server: O FastMCP server raiz.
         """
         for name, feature in sorted(self._features.items()):
-            root_server.mount(f"/{name}", feature.server)
-            logger.info("Montada: /%s — %s", name, feature.meta.description)
+            root_server.mount(feature.server, namespace=name)
+            logger.info("Montada: %s — %s", name, feature.meta.description)
 
     def summary(self) -> str:
         """Retorna um resumo das features registradas (útil para logs e docs)."""
@@ -314,30 +318,75 @@ FEATURE_META = FeatureMeta(
 ### 4. Server raiz — `src/mcp_brasil/server.py`
 
 ```python
-"""Server raiz do mcp-brasil.
+"""mcp-brasil root server — auto-discovers and mounts all features.
 
 Usa FeatureRegistry para auto-discovery e mount de features.
 Zero imports manuais — basta criar o diretório com a convenção.
+
+Inclui:
+- Lifespan: HTTP client compartilhado (startup/shutdown)
+- Middleware: Logging de todas as chamadas (tools, resources, prompts)
 """
 
 import logging
+import time
 
+import mcp.types as mt
 from fastmcp import FastMCP
+from fastmcp.prompts import PromptResult
+from fastmcp.resources import ResourceResult
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools import ToolResult
 
 from ._shared.feature import FeatureRegistry
+from ._shared.lifespan import http_lifespan
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("mcp-brasil")
 
-mcp = FastMCP("mcp-brasil 🇧🇷")
+
+class RequestLoggingMiddleware(Middleware):
+    """Log all tool calls, resource reads, and prompt requests."""
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        name = context.message.name
+        logger.info("Tool call: %s", name)
+        start = time.monotonic()
+        result = await call_next(context)
+        elapsed = time.monotonic() - start
+        logger.info("Tool %s completed in %.2fs", name, elapsed)
+        return result
+
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[mt.ReadResourceRequestParams],
+        call_next: CallNext[mt.ReadResourceRequestParams, ResourceResult],
+    ) -> ResourceResult:
+        logger.info("Resource read: %s", context.message.uri)
+        return await call_next(context)
+
+    async def on_get_prompt(
+        self,
+        context: MiddlewareContext[mt.GetPromptRequestParams],
+        call_next: CallNext[mt.GetPromptRequestParams, PromptResult],
+    ) -> PromptResult:
+        logger.info("Prompt get: %s", context.message.name)
+        return await call_next(context)
+
+
+# Server com lifespan (HTTP client compartilhado) + middleware
+mcp = FastMCP("mcp-brasil 🇧🇷", lifespan=http_lifespan)
+mcp.add_middleware(RequestLoggingMiddleware())
 
 # Auto-discovery: escaneia todos os subpacotes com FEATURE_META
 registry = FeatureRegistry()
 registry.discover()
 registry.mount_all(mcp)
 
-# Log resumo
-logger.info(registry.summary())
+logger.info("\n%s", registry.summary())
 
 if __name__ == "__main__":
     mcp.run()
@@ -397,13 +446,16 @@ fastmcp run mcp_brasil.server:mcp
           ▼
    FeatureRegistry.mount_all(mcp)
           │
-          ├── mcp.mount("/ibge", ibge_server)
-          ├── mcp.mount("/bacen", bacen_server)
-          ├── mcp.mount("/camara", camara_server)
-          └── mcp.mount("/transparencia", transparencia_server)
+          ├── mcp.mount(ibge_server, namespace="ibge")
+          ├── mcp.mount(bacen_server, namespace="bacen")
+          ├── mcp.mount(camara_server, namespace="camara")
+          └── mcp.mount(transparencia_server, namespace="transparencia")
           │
           ▼
-   Server rodando com 4 features, ~30 tools
+   Server rodando com 4 features:
+     - Tools namespaced: ibge_listar_estados, bacen_consultar_serie
+     - Resources namespaced: data://ibge/estados, data://bacen/catalogo
+     - Prompts namespaced: ibge_resumo_estado, bacen_analise_economica
 ```
 
 ---
@@ -454,6 +506,38 @@ Para uma feature **não** ser descoberta:
 - Ordem de mount é alfabética, não declarativa (aceitável para MCP)
 
 **Trade-off aceito:** Preferimos convention over configuration. O custo de documentar a convenção é menor que o custo de manter imports manuais em um projeto com 10+ features.
+
+---
+
+## Namespacing de componentes via mount()
+
+O `mount(server, namespace=name)` do FastMCP prefixa automaticamente todos os componentes:
+
+| Componente | Na feature | No root (após mount com namespace="ibge") |
+|-----------|-----------|------------------------------------------|
+| Tool | `listar_estados` | `ibge_listar_estados` |
+| Resource | `data://estados` | `data://ibge/estados` |
+| Prompt | `resumo_estado` | `ibge_resumo_estado` |
+
+**Regra crítica:** Resource URIs registrados na feature NÃO devem incluir o nome da feature. Usar `data://estados` (não `data://ibge/estados`), pois o mount adiciona o namespace automaticamente. Duplicar o nome resulta em `data://ibge/ibge/estados`.
+
+```python
+# ✅ CORRETO — na feature ibge/server.py
+mcp.resource("data://estados", mime_type="application/json")(estados_brasileiros)
+# Resultado no root: data://ibge/estados
+
+# ❌ ERRADO — namespace duplicado
+mcp.resource("data://ibge/estados", mime_type="application/json")(estados_brasileiros)
+# Resultado no root: data://ibge/ibge/estados
+```
+
+## Lifespan e Middleware no root server
+
+O root server inclui:
+
+1. **Lifespan** (`_shared/lifespan.py`) — cria um `httpx.AsyncClient` compartilhado no startup. Acessível via `ctx.lifespan_context["http_client"]` em qualquer tool.
+
+2. **Middleware** (`RequestLoggingMiddleware`) — loga todas as chamadas de tool, resource e prompt com timing. Usa tipos do FastMCP: `ToolResult`, `ResourceResult`, `PromptResult`.
 
 ---
 

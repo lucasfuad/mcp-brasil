@@ -78,8 +78,10 @@ src/mcp_brasil/
 │
 ├── ibge/                    # Feature: IBGE
 │   ├── __init__.py          # Re-exports público da feature
-│   ├── server.py            # FastMCP sub-server com tools registradas
-│   ├── tools.py             # Funções das tools (@mcp.tool)
+│   ├── server.py            # FastMCP sub-server com tools, resources e prompts
+│   ├── tools.py             # Funções das tools (@mcp.tool) com Context
+│   ├── resources.py         # Resources estáticos (dados de referência)
+│   ├── prompts.py           # Prompts (templates de análise para LLMs)
 │   ├── client.py            # Client HTTP para API do IBGE
 │   ├── schemas.py           # Pydantic models (input/output)
 │   └── constants.py         # URLs, códigos de agregados, enums
@@ -88,6 +90,8 @@ src/mcp_brasil/
 │   ├── __init__.py
 │   ├── server.py
 │   ├── tools.py
+│   ├── resources.py
+│   ├── prompts.py
 │   ├── client.py
 │   ├── schemas.py
 │   └── constants.py
@@ -127,8 +131,10 @@ src/mcp_brasil/
 
 ```
 feature/
-├── server.py      → Registro de tools no FastMCP (composição)
-├── tools.py       → Lógica de negócio das tools (funções puras quando possível)
+├── server.py      → Registro de tools, resources e prompts no FastMCP (composição)
+├── tools.py       → Lógica de negócio das tools com Context (logging/progresso)
+├── resources.py   → Dados estáticos de referência expostos como MCP resources
+├── prompts.py     → Templates de análise para LLMs (guiam uso das tools)
 ├── client.py      → Comunicação HTTP com a API externa (I/O isolado)
 ├── schemas.py     → Modelos Pydantic para input/output (contratos)
 └── constants.py   → Valores imutáveis (URLs, enums, códigos)
@@ -138,18 +144,16 @@ feature/
 1. `tools.py` **nunca** faz HTTP diretamente — delega para `client.py`
 2. `client.py` **nunca** formata resposta para LLM — retorna dados tipados
 3. `schemas.py` contém apenas Pydantic models — zero lógica
-4. `server.py` apenas registra tools — zero lógica de negócio
+4. `server.py` apenas registra tools, resources e prompts — zero lógica de negócio
 5. `constants.py` contém apenas valores literais — zero imports de outros módulos
+6. `resources.py` retorna dados estáticos como JSON string — sem chamadas HTTP
+7. `prompts.py` retorna instruções que guiam o LLM — sem lógica de negócio
 
-**Exemplo — IBGE tool:**
+**Exemplo — IBGE (completo com tools, resources, prompts):**
 
 ```python
 # ibge/schemas.py
 from pydantic import BaseModel, Field
-
-class LocalidadeInput(BaseModel):
-    tipo: str = Field(description="'estados' ou 'municipios'")
-    uf: str | None = Field(default=None, description="Sigla do estado (ex: PI)")
 
 class Estado(BaseModel):
     id: int
@@ -158,68 +162,85 @@ class Estado(BaseModel):
     regiao: str
 
 # ibge/client.py
-import httpx
+from mcp_brasil._shared.http_client import http_get
 from .constants import IBGE_API_BASE
-from .schemas import Estado
 
 async def listar_estados() -> list[Estado]:
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{IBGE_API_BASE}/v1/localidades/estados")
-        response.raise_for_status()
-        data = response.json()
-        return [
-            Estado(
-                id=e["id"],
-                sigla=e["sigla"],
-                nome=e["nome"],
-                regiao=e["regiao"]["nome"],
-            )
-            for e in data
-        ]
+    data = await http_get(f"{IBGE_API_BASE}/v1/localidades/estados")
+    return [Estado(id=e["id"], sigla=e["sigla"], nome=e["nome"],
+                   regiao=e["regiao"]["nome"]) for e in data]
 
-# ibge/tools.py
-from .client import listar_estados, listar_municipios
-from .schemas import LocalidadeInput
+# ibge/tools.py — Context para logging estruturado
+from fastmcp import Context
+from mcp_brasil._shared.formatting import markdown_table
+from . import client
 
-async def buscar_localidades(tipo: str, uf: str | None = None) -> str:
-    """Busca estados e municípios do Brasil via IBGE."""
-    if tipo == "estados":
-        estados = await listar_estados()
-        return "\n".join(f"{e.sigla} — {e.nome} ({e.regiao})" for e in estados)
-    elif tipo == "municipios" and uf:
-        municipios = await listar_municipios(uf)
-        return "\n".join(f"{m.codigo} — {m.nome}" for m in municipios)
-    return "Informe tipo='estados' ou tipo='municipios' com uf."
+async def listar_estados(ctx: Context) -> str:
+    """Lista todos os 27 estados brasileiros com sigla, nome e região."""
+    await ctx.info("Buscando estados brasileiros...")
+    estados = await client.listar_estados()
+    rows = [(e.sigla, e.nome, e.regiao) for e in estados]
+    return markdown_table(["UF", "Nome", "Região"], rows)
 
-# ibge/server.py
+# ibge/resources.py — Dados estáticos como MCP resources
+import json
+
+def estados_brasileiros() -> str:
+    """27 estados brasileiros com sigla, nome e região."""
+    return json.dumps([{"sigla": "AC", "nome": "Acre", ...}, ...])
+
+# ibge/prompts.py — Templates de análise para LLMs
+def resumo_estado(uf: str) -> str:
+    """Gera análise completa de um estado brasileiro."""
+    return f"Analise o estado {uf} usando as tools ibge_listar_estados, ..."
+
+# ibge/server.py — Registra tools + resources + prompts
 from fastmcp import FastMCP
-from .tools import buscar_localidades, consultar_agregado, consultar_nomes
+from .tools import listar_estados, buscar_municipios
+from .resources import estados_brasileiros, regioes_brasileiras
+from .prompts import resumo_estado, comparativo_regional
 
 mcp = FastMCP("mcp-brasil-ibge")
 
-mcp.tool(buscar_localidades)
-mcp.tool(consultar_agregado)
-mcp.tool(consultar_nomes)
+# Tools
+mcp.tool(listar_estados)
+mcp.tool(buscar_municipios)
+
+# Resources (URIs sem namespace — mount() adiciona "ibge/" automaticamente)
+mcp.resource("data://estados", mime_type="application/json")(estados_brasileiros)
+mcp.resource("data://regioes", mime_type="application/json")(regioes_brasileiras)
+
+# Prompts
+mcp.prompt(resumo_estado)
+mcp.prompt(comparativo_regional)
 ```
 
-**Composição no server raiz:**
+**Composição no server raiz (auto-registry — ver ADR-002):**
 
 ```python
-# src/mcp_brasil/server.py
+# src/mcp_brasil/server.py — NÃO é editado manualmente
 from fastmcp import FastMCP
-from .ibge.server import mcp as ibge_server
-from .bacen.server import mcp as bacen_server
-from .transparencia.server import mcp as transparencia_server
+from ._shared.feature import FeatureRegistry
+from ._shared.lifespan import http_lifespan
 
-mcp = FastMCP("mcp-brasil 🇧🇷")
+mcp = FastMCP("mcp-brasil 🇧🇷", lifespan=http_lifespan)
+mcp.add_middleware(RequestLoggingMiddleware())
 
-mcp.mount("/ibge", ibge_server)
-mcp.mount("/bacen", bacen_server)
-mcp.mount("/transparencia", transparencia_server)
-
-if __name__ == "__main__":
-    mcp.run()
+registry = FeatureRegistry()
+registry.discover()
+registry.mount_all(mcp)
 ```
+
+**Namespacing automático com mount():**
+
+| Componente na feature | URI/nome na feature | URI/nome no root (após mount) |
+|----------------------|--------------------|-----------------------------|
+| Tool `listar_estados` | `listar_estados` | `ibge_listar_estados` |
+| Resource `data://estados` | `data://estados` | `data://ibge/estados` |
+| Prompt `resumo_estado` | `resumo_estado` | `ibge_resumo_estado` |
+
+> **IMPORTANTE:** Resource URIs na feature NÃO devem incluir o nome da feature.
+> O `mount(server, namespace="ibge")` adiciona o prefixo automaticamente.
 
 ---
 
@@ -235,7 +256,7 @@ if __name__ == "__main__":
 | **pytest-asyncio** | Testes async | Tools usam async/await |
 | **mypy** ou **ty** | Type checking | Garante consistência de types |
 | **prek** (pre-commit) | Git hooks | Roda ruff+types antes de cada commit |
-| **just** | Task runner | Mesmo que FastMCP usa, cross-platform |
+| **make** | Task runner | Makefile com targets padrão (ci, test, lint, etc.) |
 | **httpx** | HTTP client | Async-first, melhor que requests para I/O concorrente |
 | **pydantic** | Schemas | Validação + serialização + docs automáticas |
 | **GitHub Actions** | CI/CD | Lint → Type check → Test → Publish |
@@ -295,24 +316,33 @@ asyncio_mode = "auto"
 ```
 tests/
 ├── conftest.py              # Fixtures globais (mock HTTP, FastMCP test client)
+├── test_root_server.py      # Testa server montado (tools, resources, prompts namespaced)
 ├── ibge/
-│   ├── test_tools.py        # Testa lógica das tools
-│   ├── test_client.py       # Testa client HTTP (com mock/vcr)
-│   └── test_integration.py  # Testa tool via FastMCP client (e2e)
+│   ├── test_tools.py        # Testa lógica das tools (mock client)
+│   ├── test_client.py       # Testa client HTTP (respx mock)
+│   ├── test_resources.py    # Testa resources (unit + via Client)
+│   ├── test_prompts.py      # Testa prompts (unit + via Client)
+│   └── test_integration.py  # Testa tool via fastmcp.Client (e2e)
 ├── bacen/
 │   ├── test_tools.py
 │   ├── test_client.py
+│   ├── test_resources.py
+│   ├── test_prompts.py
 │   └── test_integration.py
 ├── transparencia/
 └── _shared/
     ├── test_cache.py
-    └── test_http_client.py
+    ├── test_http_client.py
+    └── test_lifespan.py     # Testa lifespan (cria/fecha client)
 ```
 
 **Padrões de teste:**
 - `test_tools.py` — testa lógica pura, mocka o client
 - `test_client.py` — testa HTTP com `respx` (mock httpx)
+- `test_resources.py` — testa resources estáticos (JSON válido, dados corretos)
+- `test_prompts.py` — testa prompts (retorno, parâmetros, registro via Client)
 - `test_integration.py` — usa `fastmcp.Client` para testar tool end-to-end
+- `test_root_server.py` — testa server completo com tools, resources e prompts namespaced
 
 **Consequências:**
 - Cada feature tem seus próprios testes isolados
@@ -449,9 +479,9 @@ MCP servers for Brazilian government public APIs.
 |---|---------|---------|
 | 1 | Framework | Python + FastMCP v3 (Prefect) |
 | 2 | Organização | Package by Feature (single package, `src/` layout) |
-| 3 | Anatomia de feature | server.py → tools.py → client.py → schemas.py → constants.py |
-| 4 | Tooling | uv + ruff + pytest + mypy + prek + just + httpx + pydantic |
-| 5 | Testes | Espelham features, 3 níveis (unit, mock HTTP, integration) |
+| 3 | Anatomia de feature | server.py → tools.py + resources.py + prompts.py → client.py → schemas.py → constants.py |
+| 4 | Tooling | uv + ruff + pytest + mypy + make + httpx + pydantic |
+| 5 | Testes | Espelham features, 5 níveis (unit, mock HTTP, resources, prompts, integration) |
 | 6 | Distribuição | Pacote único `mcp-brasil` no PyPI |
 | 7 | Código | Clean Code: SRP, type hints, docstrings, conventional commits |
 | 8 | AI-ready | AGENTS.md + CLAUDE.md na raiz |
