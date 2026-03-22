@@ -195,9 +195,7 @@ class TestBuscarProcessosAvancado:
 
     @pytest.mark.asyncio
     async def test_no_next_page(self) -> None:
-        mock_processos = [
-            Processo(numero="0001234", classe="Ação Penal")
-        ]
+        mock_processos = [Processo(numero="0001234", classe="Ação Penal")]
         with patch(
             f"{MODULE}.buscar_processos_avancado",
             new_callable=AsyncMock,

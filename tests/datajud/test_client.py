@@ -213,9 +213,7 @@ class TestBuscarProcessosAvancado:
     @respx.mock
     async def test_search_after_pagination(self) -> None:
         tjdft_url = f"{DATAJUD_API_BASE}tjdft/_search"
-        respx.post(tjdft_url).mock(
-            return_value=httpx.Response(200, json={"hits": {"hits": []}})
-        )
+        respx.post(tjdft_url).mock(return_value=httpx.Response(200, json={"hits": {"hits": []}}))
         processos, token = await client.buscar_processos_avancado(
             tribunal="tjdft", search_after=[1681366085550]
         )

@@ -7,6 +7,8 @@ Rules (ADR-001):
 
 from __future__ import annotations
 
+import contextlib
+
 from mcp_brasil._shared.formatting import markdown_table
 
 from . import client
@@ -243,10 +245,8 @@ async def buscar_processos_avancado(
     """
     token: list[int] | None = None
     if search_after is not None:
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             token = [int(search_after)]
-        except (ValueError, TypeError):
-            pass
 
     processos, next_token = await client.buscar_processos_avancado(
         tribunal=tribunal,
@@ -270,13 +270,11 @@ async def buscar_processos_avancado(
         for p in processos
     ]
     header = f"Processos — {tribunal.upper()} ({len(processos)} resultados):\n\n"
-    table = markdown_table(
-        ["Número", "Classe", "Assunto", "Órgão Julgador", "Ajuizamento"], rows
-    )
+    table = markdown_table(["Número", "Classe", "Assunto", "Órgão Julgador", "Ajuizamento"], rows)
 
     pagination = ""
     if next_token:
-        pagination = f"\n\n**Próxima página:** use search_after=\"{next_token[0]}\""
+        pagination = f'\n\n**Próxima página:** use search_after="{next_token[0]}"'
 
     return header + table + pagination
 
