@@ -2,6 +2,16 @@
 
 Todas as mudanças notáveis do mcp-brasil estão documentadas neste arquivo.
 
+## [0.2.2] - 2026-03-23
+
+### Documentation
+
+- **release:** Add release rules to CLAUDE.md and AGENTS.md
+
+### Testing
+
+- **compras:** Update tests for pncp subpackage
+
 ## [0.2.0] - 2026-03-23
 
 ### Bug Fixes
