@@ -64,15 +64,28 @@ UFS_BRASIL = [
     "to",
 ]
 
-# Mapeamento ano+turno → ciclo+eleição (cache manual para eleições conhecidas)
-# Formato: (ano, turno) → (ciclo, eleicao_padded, eleicao_unpadded)
+# Mapeamento (ano, turno, cargo_code) → (ciclo, padded, unpadded)
+# O CDN do TSE usa election codes separados por tipo de cargo:
+#   2022: 544/545 = presidente, 546/547 = governador+senador+deputados
+#   2024: 619/620 = prefeito+vereador
 # - padded: usado em filenames (e000544)
 # - unpadded: usado em paths do CDN (/544/)
-ELEICOES_CDN: dict[tuple[int, int], tuple[str, str, str]] = {
-    (2022, 1): ("ele2022", "000544", "544"),
-    (2022, 2): ("ele2022", "000545", "545"),
-    (2024, 1): ("ele2024", "000619", "619"),
-    (2024, 2): ("ele2024", "000620", "620"),
+ELEICOES_CDN: dict[tuple[int, int, str], tuple[str, str, str]] = {
+    # 2022 — Presidente
+    (2022, 1, "0001"): ("ele2022", "000544", "544"),
+    (2022, 2, "0001"): ("ele2022", "000545", "545"),
+    # 2022 — Governador, Senador, Deputados (eleição separada)
+    (2022, 1, "0003"): ("ele2022", "000546", "546"),
+    (2022, 2, "0003"): ("ele2022", "000547", "547"),
+    (2022, 1, "0005"): ("ele2022", "000546", "546"),
+    (2022, 1, "0006"): ("ele2022", "000546", "546"),
+    (2022, 1, "0007"): ("ele2022", "000546", "546"),
+    (2022, 1, "0008"): ("ele2022", "000546", "546"),
+    # 2024 — Prefeito, Vereador
+    (2024, 1, "0011"): ("ele2024", "000619", "619"),
+    (2024, 2, "0011"): ("ele2024", "000620", "620"),
+    (2024, 1, "0013"): ("ele2024", "000619", "619"),
+    (2024, 2, "0013"): ("ele2024", "000620", "620"),
 }
 
 # Códigos de cargos eleitorais

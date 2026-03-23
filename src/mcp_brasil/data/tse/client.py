@@ -278,8 +278,28 @@ async def resultado_eleicao(
 # --- CDN de Resultados (resultados.tse.jus.br) ---
 
 
-def _resolve_eleicao(ano: int, turno: int = 1) -> tuple[str, str, str]:
-    """Resolve ano+turno em ciclo+padded+unpadded.
+def _resolve_eleicao_any(ano: int, turno: int = 1) -> tuple[str, str, str]:
+    """Resolve ano+turno em ciclo+padded+unpadded (qualquer cargo).
+
+    Usado para config files que são compartilhados entre cargos.
+
+    Raises:
+        ValueError: se nenhuma eleição está mapeada para o ano+turno.
+    """
+    for (a, t, _), val in ELEICOES_CDN.items():
+        if a == ano and t == turno:
+            return val
+    anos_disponiveis = sorted({(a, t) for a, t, _ in ELEICOES_CDN})
+    disponiveis = ", ".join(f"{a} T{t}" for a, t in anos_disponiveis)
+    raise ValueError(f"Eleição {ano} turno {turno} não mapeada. Disponíveis: {disponiveis}")
+
+
+def _resolve_eleicao(ano: int, cargo_code: str, turno: int = 1) -> tuple[str, str, str]:
+    """Resolve ano+turno+cargo em ciclo+padded+unpadded.
+
+    O CDN do TSE usa election codes separados por tipo de cargo:
+    2022: 544/545 = presidente, 546/547 = governador+senador+deputados
+    2024: 619/620 = prefeito+vereador
 
     Returns:
         (ciclo, padded, unpadded) ex: ("ele2022", "000544", "544")
@@ -289,10 +309,14 @@ def _resolve_eleicao(ano: int, turno: int = 1) -> tuple[str, str, str]:
     Raises:
         ValueError: se a eleição não está mapeada.
     """
-    key = (ano, turno)
+    key = (ano, turno, cargo_code)
     if key not in ELEICOES_CDN:
-        disponiveis = ", ".join(f"{a} T{t}" for a, t in sorted(ELEICOES_CDN.keys()))
-        raise ValueError(f"Eleição {ano} turno {turno} não mapeada. Disponíveis: {disponiveis}")
+        anos_disponiveis = sorted({(a, t) for a, t, _ in ELEICOES_CDN})
+        disponiveis = ", ".join(f"{a} T{t}" for a, t in anos_disponiveis)
+        raise ValueError(
+            f"Eleição {ano} turno {turno} cargo {cargo_code} não mapeada. "
+            f"Disponíveis: {disponiveis}"
+        )
     return ELEICOES_CDN[key]
 
 
@@ -364,8 +388,8 @@ async def resultado_simplificado(
     Returns:
         ResultadoRegiao com candidatos rankeados por votos, ou None se 404.
     """
-    ciclo, padded, unpadded = _resolve_eleicao(ano, turno)
     cargo_code = _resolve_cargo(cargo)
+    ciclo, padded, unpadded = _resolve_eleicao(ano, cargo_code, turno)
     uf_lower = uf.lower().strip()
 
     url = (
@@ -418,7 +442,7 @@ async def listar_municipios_eleitorais(
     Returns:
         Lista de MunicipioEleitoral com códigos TSE e IBGE.
     """
-    ciclo, padded, unpadded = _resolve_eleicao(ano, turno)
+    ciclo, padded, unpadded = _resolve_eleicao_any(ano, turno)
     url = f"{RESULTADOS_CDN_BASE}/{ciclo}/{unpadded}/config/mun-e{padded}-cm.json"
 
     try:
@@ -507,8 +531,8 @@ async def resultado_municipio(
     Returns:
         ResultadoRegiao com candidatos rankeados por votos, ou None se 404.
     """
-    ciclo, padded, unpadded = _resolve_eleicao(ano, turno)
     cargo_code = _resolve_cargo(cargo)
+    ciclo, padded, unpadded = _resolve_eleicao(ano, cargo_code, turno)
     uf_lower = uf.lower().strip()
 
     url = (

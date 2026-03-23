@@ -380,21 +380,59 @@ CDN_RESULT_JSON = {
 
 
 class TestResolveEleicao:
-    def test_known_election(self) -> None:
-        ciclo, padded, unpadded = client._resolve_eleicao(2022, 1)
+    def test_presidente_2022(self) -> None:
+        ciclo, padded, unpadded = client._resolve_eleicao(2022, "0001", 1)
         assert ciclo == "ele2022"
         assert padded == "000544"
         assert unpadded == "544"
 
-    def test_known_election_2024(self) -> None:
-        ciclo, padded, unpadded = client._resolve_eleicao(2024, 1)
+    def test_governador_2022(self) -> None:
+        ciclo, padded, unpadded = client._resolve_eleicao(2022, "0003", 1)
+        assert ciclo == "ele2022"
+        assert padded == "000546"
+        assert unpadded == "546"
+
+    def test_senador_2022(self) -> None:
+        _ciclo, padded, _unpadded = client._resolve_eleicao(2022, "0005", 1)
+        assert padded == "000546"
+
+    def test_deputado_federal_2022(self) -> None:
+        _ciclo, padded, _unpadded = client._resolve_eleicao(2022, "0006", 1)
+        assert padded == "000546"
+
+    def test_prefeito_2024(self) -> None:
+        ciclo, padded, unpadded = client._resolve_eleicao(2024, "0011", 1)
         assert ciclo == "ele2024"
         assert padded == "000619"
         assert unpadded == "619"
 
+    def test_governador_2t_2022(self) -> None:
+        _ciclo, padded, unpadded = client._resolve_eleicao(2022, "0003", 2)
+        assert padded == "000547"
+        assert unpadded == "547"
+
     def test_unknown_election_raises(self) -> None:
         with pytest.raises(ValueError, match="não mapeada"):
-            client._resolve_eleicao(1990, 1)
+            client._resolve_eleicao(1990, "0001", 1)
+
+    def test_unknown_cargo_for_year_raises(self) -> None:
+        with pytest.raises(ValueError, match="não mapeada"):
+            # Prefeito doesn't exist in 2022
+            client._resolve_eleicao(2022, "0011", 1)
+
+
+class TestResolveEleicaoAny:
+    def test_finds_any_2022(self) -> None:
+        ciclo, _padded, _unpadded = client._resolve_eleicao_any(2022, 1)
+        assert ciclo == "ele2022"
+
+    def test_finds_any_2024(self) -> None:
+        ciclo, _padded, _unpadded = client._resolve_eleicao_any(2024, 1)
+        assert ciclo == "ele2024"
+
+    def test_unknown_year_raises(self) -> None:
+        with pytest.raises(ValueError, match="não mapeada"):
+            client._resolve_eleicao_any(1990, 1)
 
 
 class TestResolveCargo:

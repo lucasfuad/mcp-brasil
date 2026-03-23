@@ -70,6 +70,7 @@
 - [x] **Sem dados de votação por município** — Resolvido para eleições municipais. Adicionadas `listar_municipios_eleitorais` e `resultado_por_municipio` (CDN formato `-u.json`). Disponível para 2024 (prefeito, vereador).
 - [ ] **CDN não tem dados por município para eleições federais** — O CDN do TSE (`resultados.tse.jus.br`) não disponibiliza dados de votação por município para eleições federais (2022 — presidente, governador, senador). URLs `dados/{uf}/{uf}{cod}-c{cargo}-e{eleicao}-u.json` retornam 404 para eleições federais.
 - [x] **CDN paths com election code padded causavam 404** — URLs usavam `/000544/` (padded) no path quando o CDN exige `/544/` (unpadded). Padded é usado apenas no filename (`e000544`). Corrigido `ELEICOES_CDN` para armazenar 3 valores `(ciclo, padded, unpadded)`.
+- [x] **CDN usa election codes separados por cargo** — O CDN do TSE usa election codes diferentes por tipo de cargo: 544/545 = presidente, 546/547 = governador+senador+deputados, 619/620 = prefeito+vereador. `ELEICOES_CDN` agora indexa por `(ano, turno, cargo_code)`. Adicionado `_resolve_eleicao_any()` para config files compartilhados.
 
 ## Jurisprudência Feature
 
