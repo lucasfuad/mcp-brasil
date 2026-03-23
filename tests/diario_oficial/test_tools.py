@@ -76,6 +76,36 @@ class TestBuscarDiarios:
         assert "2 diários encontrados" in result
 
     @pytest.mark.asyncio
+    async def test_strips_html_tags_from_excerpts(self) -> None:
+        mock_data = DiarioResultado(
+            total_gazettes=1,
+            gazettes=[
+                DiarioOficial(
+                    territory_id="3550308",
+                    territory_name="São Paulo",
+                    state_code="SP",
+                    date="2024-01-15",
+                    excerpts=[
+                        "Contrato <em>licitação</em> firmado entre <b>Empresa X</b> e prefeitura"
+                    ],
+                ),
+            ],
+        )
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_diarios",
+            new_callable=AsyncMock,
+            return_value=mock_data,
+        ):
+            result = await tools.buscar_diarios("licitação", ctx)
+        assert "<em>" not in result
+        assert "</em>" not in result
+        assert "<b>" not in result
+        assert "</b>" not in result
+        assert "licitação" in result
+        assert "Empresa X" in result
+
+    @pytest.mark.asyncio
     async def test_empty_results(self) -> None:
         mock_data = DiarioResultado(total_gazettes=0, gazettes=[])
         ctx = _mock_ctx()

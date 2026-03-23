@@ -7,11 +7,15 @@ Rules (ADR-001):
 
 from __future__ import annotations
 
+import re
+
 from fastmcp import Context
 
 from mcp_brasil._shared.formatting import markdown_table
 
 from . import client
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 async def buscar_diarios(
@@ -58,7 +62,7 @@ async def buscar_diarios(
         if d.is_extra_edition:
             lines.append("**Edição Extra**")
         if d.excerpts:
-            excerpt = d.excerpts[0][:500]
+            excerpt = _HTML_TAG_RE.sub("", d.excerpts[0])[:500]
             lines.append(f"\n> {excerpt}...")
         if d.txt_url:
             lines.append(f"\n[Texto completo]({d.txt_url})")

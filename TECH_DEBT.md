@@ -81,12 +81,12 @@
 
 - [x] **Falsy `status_code=0` bug** — `status_map.get(info.status_code or -1, ...)` treated `status_code=0` as `-1` because `0` is falsy in Python. Fixed to use explicit `is not None` check.
 - [ ] **FIPE endpoints may be slow/unreliable** — BrasilAPI proxies FIPE data; upstream can be slow. No retry/fallback implemented beyond shared `http_get()` retries.
-- [ ] **CNPJ rate limiting** — BrasilAPI has aggressive rate limiting on CNPJ endpoint. Shared rate limiter not applied (uses shared `http_get()` only).
+- [x] **CNPJ rate limiting** — Resolvido. RateLimiter(60 req/min) aplicado via `_get()` wrapper em todas as 16 funções do client. Mesmo padrão de transparência/câmara.
 
 ## Diário Oficial Feature
 
 - [ ] **Limited to 3 tools** — Original plan called for 4 tools. The 4th (buscar por CNPJs em lote) was deferred; Querido Diário API doesn't support batch CNPJ search natively.
-- [ ] **No excerpt highlighting** — Querido Diário returns raw text excerpts with `<em>` tags. Current implementation truncates at 500 chars but doesn't strip HTML tags.
+- [x] **No excerpt highlighting** — Resolvido. HTML tags (`<em>`, `<b>`, etc.) são removidas dos excerpts via `re.sub(r"<[^>]+>", "")` antes de truncar a 500 chars.
 
 ## Compras Feature
 
