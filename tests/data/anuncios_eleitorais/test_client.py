@@ -51,7 +51,7 @@ MOCK_RESPONSE = {
     ],
     "paging": {
         "cursors": {"before": "ABC123", "after": "DEF456"},
-        "next": "https://graph.facebook.com/v21.0/ads_archive?after=DEF456",
+        "next": "https://graph.facebook.com/v25.0/ads_archive?after=DEF456",
     },
 }
 
@@ -126,17 +126,6 @@ async def test_buscar_anuncios_por_bylines() -> None:
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_buscar_anuncios_por_regiao() -> None:
-    """Test search with delivery_by_region filter."""
-    respx.get(ADS_ARCHIVE_URL).mock(return_value=Response(200, json=MOCK_RESPONSE))
-
-    result = await buscar_anuncios(delivery_by_region=["São Paulo"])
-
-    assert len(result.data) == 1
-
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_buscar_anuncios_resposta_vazia() -> None:
     """Test empty response."""
     respx.get(ADS_ARCHIVE_URL).mock(return_value=Response(200, json=MOCK_EMPTY_RESPONSE))
@@ -165,7 +154,7 @@ async def test_buscar_anuncios_paginacao() -> None:
 @pytest.mark.asyncio
 async def test_buscar_proxima_pagina() -> None:
     """Test following a pagination cursor."""
-    next_url = "https://graph.facebook.com/v21.0/ads_archive?after=DEF456"
+    next_url = "https://graph.facebook.com/v25.0/ads_archive?after=DEF456"
     respx.get(next_url).mock(return_value=Response(200, json=MOCK_RESPONSE))
 
     result = await buscar_proxima_pagina(next_url)
@@ -247,9 +236,9 @@ async def test_buscar_anuncios_com_audiencia() -> None:
 
 
 def test_get_access_token_missing() -> None:
-    """Test error when META_ACCESS_TOKEN is not set."""
+    """Test error when no Meta token is set."""
     with patch.dict(os.environ, {}, clear=True):
         from mcp_brasil.data.anuncios_eleitorais.client import _get_access_token
 
-        with pytest.raises(RuntimeError, match="META_ACCESS_TOKEN"):
+        with pytest.raises(RuntimeError, match="Token da Meta"):
             _get_access_token()

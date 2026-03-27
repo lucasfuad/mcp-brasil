@@ -2,6 +2,10 @@
 
 Endpoints:
     - GET /ads_archive — busca anúncios na biblioteca (único endpoint)
+
+Nota: A Graph API espera arrays como strings no formato "['valor']"
+(aspas simples, não JSON). delivery_by_region é apenas campo de resposta,
+não filtro de busca — a filtragem regional é feita pós-busca.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from mcp_brasil._shared.http_client import http_get
 
 from .constants import (
     ADS_ARCHIVE_URL,
+    BUSCA_PALAVRAS,
     CAMPOS_ANUNCIO_POLITICO,
     LIMITE_PADRAO,
     TIPO_POLITICO,
@@ -21,12 +26,35 @@ from .schemas import RespostaAnuncios
 
 
 def _get_access_token() -> str:
-    """Retrieve Meta access token from environment."""
-    token = os.environ.get("META_ACCESS_TOKEN", "")
+    """Retrieve Meta access token from environment.
+
+    Supports both user tokens and app tokens (APP_ID|APP_SECRET).
+    Checks META_AD_LIBRARY_TOKEN first, then META_ACCESS_TOKEN.
+    """
+    token = os.environ.get("META_AD_LIBRARY_TOKEN") or os.environ.get("META_ACCESS_TOKEN") or ""
     if not token:
-        msg = "META_ACCESS_TOKEN não configurado. Configure a variável de ambiente."
+        msg = (
+            "Token da Meta não configurado. "
+            "Defina META_ACCESS_TOKEN ou META_AD_LIBRARY_TOKEN no ambiente."
+        )
         raise RuntimeError(msg)
     return token
+
+
+def _format_list_param(values: list[str]) -> str:
+    """Format a list as Graph API array parameter.
+
+    The Graph API expects arrays as "['value1','value2']" (single quotes),
+    NOT JSON format with double quotes.
+
+    Args:
+        values: List of string values.
+
+    Returns:
+        String in format "['val1','val2']".
+    """
+    items = ",".join(f"'{v}'" for v in values)
+    return f"[{items}]"
 
 
 async def buscar_anuncios(
@@ -39,13 +67,12 @@ async def buscar_anuncios(
     ad_delivery_date_min: str | None = None,
     ad_delivery_date_max: str | None = None,
     bylines: list[str] | None = None,
-    delivery_by_region: list[str] | None = None,
     estimated_audience_size_min: int | None = None,
     estimated_audience_size_max: int | None = None,
     languages: list[str] | None = None,
     media_type: str | None = None,
     publisher_platforms: list[str] | None = None,
-    search_type: str | None = None,
+    search_type: str = BUSCA_PALAVRAS,
     unmask_removed_content: bool = False,
     fields: str = CAMPOS_ANUNCIO_POLITICO,
     limit: int = LIMITE_PADRAO,
@@ -61,7 +88,6 @@ async def buscar_anuncios(
         ad_delivery_date_min: Data mínima de veiculação (YYYY-mm-dd).
         ad_delivery_date_max: Data máxima de veiculação (YYYY-mm-dd).
         bylines: Financiadores (quem pagou pelo anúncio).
-        delivery_by_region: Regiões/estados de entrega.
         estimated_audience_size_min: Tamanho mínimo da audiência estimada.
         estimated_audience_size_max: Tamanho máximo da audiência estimada.
         languages: Idiomas (ISO 639-1).
@@ -79,16 +105,17 @@ async def buscar_anuncios(
 
     params: dict[str, Any] = {
         "access_token": _get_access_token(),
-        "ad_reached_countries": str(countries),
         "ad_type": ad_type,
+        "ad_reached_countries": _format_list_param(countries),
+        "search_type": search_type,
         "fields": fields,
-        "limit": limit,
+        "limit": min(limit, 500),
     }
 
     if search_terms:
         params["search_terms"] = search_terms
     if search_page_ids:
-        params["search_page_ids"] = str(search_page_ids)
+        params["search_page_ids"] = _format_list_param(search_page_ids)
     if ad_active_status:
         params["ad_active_status"] = ad_active_status
     if ad_delivery_date_min:
@@ -96,21 +123,17 @@ async def buscar_anuncios(
     if ad_delivery_date_max:
         params["ad_delivery_date_max"] = ad_delivery_date_max
     if bylines:
-        params["bylines"] = str(bylines)
-    if delivery_by_region:
-        params["delivery_by_region"] = str(delivery_by_region)
+        params["bylines"] = _format_list_param(bylines)
     if estimated_audience_size_min is not None:
         params["estimated_audience_size_min"] = estimated_audience_size_min
     if estimated_audience_size_max is not None:
         params["estimated_audience_size_max"] = estimated_audience_size_max
     if languages:
-        params["languages"] = str(languages)
+        params["languages"] = _format_list_param(languages)
     if media_type:
         params["media_type"] = media_type
     if publisher_platforms:
-        params["publisher_platforms"] = str(publisher_platforms)
-    if search_type:
-        params["search_type"] = search_type
+        params["publisher_platforms"] = _format_list_param(publisher_platforms)
     if unmask_removed_content:
         params["unmask_removed_content"] = "true"
 

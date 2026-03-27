@@ -1,7 +1,7 @@
 """Constants for the Anuncios Eleitorais feature."""
 
 # API base URL
-META_GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
+META_GRAPH_API_BASE = "https://graph.facebook.com/v25.0"
 
 # Endpoints
 ADS_ARCHIVE_URL = f"{META_GRAPH_API_BASE}/ads_archive"

@@ -119,16 +119,18 @@ async def buscar_anuncios_eleitorais(
         Lista formatada de anúncios eleitorais com dados de gastos e alcance.
     """
     await ctx.info(f"Buscando anúncios eleitorais: '{search_terms}'...")
-    resposta = await client.buscar_anuncios(
-        search_terms=search_terms,
-        ad_active_status=ad_active_status,
-        ad_delivery_date_min=ad_delivery_date_min,
-        ad_delivery_date_max=ad_delivery_date_max,
-        media_type=media_type,
-        publisher_platforms=publisher_platforms,
-        search_type=search_type,
-        limit=limit,
-    )
+    kwargs: dict[str, object] = {
+        "search_terms": search_terms,
+        "ad_active_status": ad_active_status,
+        "ad_delivery_date_min": ad_delivery_date_min,
+        "ad_delivery_date_max": ad_delivery_date_max,
+        "media_type": media_type,
+        "publisher_platforms": publisher_platforms,
+        "limit": limit,
+    }
+    if search_type is not None:
+        kwargs["search_type"] = search_type
+    resposta = await client.buscar_anuncios(**kwargs)  # type: ignore[arg-type]
     return _formatar_lista_anuncios(resposta.data)
 
 
@@ -206,41 +208,65 @@ async def buscar_anuncios_por_financiador(
 
 
 async def buscar_anuncios_por_regiao(
-    delivery_by_region: list[str],
+    regiao: str,
     ctx: Context,
     search_terms: str = "",
     ad_active_status: str | None = None,
     ad_delivery_date_min: str | None = None,
     ad_delivery_date_max: str | None = None,
-    limit: int = 25,
+    limit: int = 50,
 ) -> str:
-    """Busca anúncios eleitorais por região/estado de entrega no Brasil.
+    """Busca anúncios eleitorais com alcance em uma região/estado do Brasil.
 
-    Filtra anúncios pela região onde foram exibidos aos usuários.
+    Busca anúncios políticos e filtra os que tiveram alcance na região informada.
+    A filtragem é feita pós-busca usando o campo delivery_by_region da resposta,
+    pois a API não suporta filtro direto por região na busca.
 
     Args:
-        delivery_by_region: Estados brasileiros para filtrar.
-            Exemplo: ['São Paulo', 'Rio de Janeiro', 'Minas Gerais'].
+        regiao: Nome do estado brasileiro (ex: 'Piauí', 'São Paulo').
             Use o nome completo do estado, não a sigla.
-        search_terms: Termos de busca adicionais (opcional).
+        search_terms: Termos de busca adicionais (opcional). Se vazio, busca
+            pelo nome da região automaticamente.
         ad_active_status: Status do anúncio (ACTIVE, INACTIVE, ALL). Padrão: ACTIVE.
         ad_delivery_date_min: Data mínima de veiculação (YYYY-mm-dd).
         ad_delivery_date_max: Data máxima de veiculação (YYYY-mm-dd).
-        limit: Número máximo de resultados (1-500). Padrão: 25.
+        limit: Número de resultados a buscar antes de filtrar (1-500). Padrão: 50.
 
     Returns:
-        Lista formatada de anúncios veiculados na(s) região(ões).
+        Lista formatada de anúncios com alcance na região.
     """
-    await ctx.info(f"Buscando anúncios veiculados em: {', '.join(delivery_by_region)}...")
+    termo = search_terms or regiao
+    await ctx.info(f"Buscando anúncios com alcance em {regiao}...")
     resposta = await client.buscar_anuncios(
-        search_terms=search_terms,
-        delivery_by_region=delivery_by_region,
+        search_terms=termo,
         ad_active_status=ad_active_status,
         ad_delivery_date_min=ad_delivery_date_min,
         ad_delivery_date_max=ad_delivery_date_max,
         limit=limit,
     )
-    return _formatar_lista_anuncios(resposta.data)
+
+    # Filtrar pós-busca: anúncios com alcance na região
+    regiao_lower = regiao.lower()
+    filtrados = []
+    for ad in resposta.data:
+        # Check delivery_by_region
+        if ad.delivery_by_region:
+            for r in ad.delivery_by_region:
+                if r.region and regiao_lower in r.region.lower():
+                    filtrados.append(ad)
+                    break
+        # Check target_locations
+        if ad.target_locations:
+            for loc in ad.target_locations:
+                if loc.name and regiao_lower in loc.name.lower():
+                    filtrados.append(ad)
+                    break
+        # Check ad text mentions
+        texto = " ".join(ad.ad_creative_bodies or []).lower()
+        if regiao_lower in texto and ad not in filtrados:
+            filtrados.append(ad)
+
+    return _formatar_lista_anuncios(filtrados)
 
 
 async def analisar_demografia_anuncios(

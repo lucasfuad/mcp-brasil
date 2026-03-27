@@ -119,14 +119,28 @@ async def test_buscar_anuncios_por_financiador(
 @patch("mcp_brasil.data.anuncios_eleitorais.tools.client")
 @pytest.mark.asyncio
 async def test_buscar_anuncios_por_regiao(mock_client: AsyncMock, mock_ctx: AsyncMock) -> None:
-    """Test search by region."""
-    mock_client.buscar_anuncios = AsyncMock(return_value=_make_response())
+    """Test search by region with post-filtering."""
+    ad_sp = _make_ad(
+        delivery_by_region=[
+            DistribuicaoRegional(region="São Paulo", percentage="0.35"),
+        ],
+    )
+    ad_rj = _make_ad(
+        id="222333444",
+        page_name="Outro Candidato",
+        delivery_by_region=[
+            DistribuicaoRegional(region="Rio de Janeiro", percentage="0.50"),
+        ],
+    )
+    mock_client.buscar_anuncios = AsyncMock(return_value=_make_response([ad_sp, ad_rj]))
 
-    result = await buscar_anuncios_por_regiao(["São Paulo"], mock_ctx)
+    result = await buscar_anuncios_por_regiao("São Paulo", mock_ctx)
 
     assert "Candidato Teste" in result
+    assert "Outro Candidato" not in result
+    # Should pass search_terms=regiao when no explicit terms given
     call_kwargs = mock_client.buscar_anuncios.call_args.kwargs
-    assert call_kwargs["delivery_by_region"] == ["São Paulo"]
+    assert call_kwargs["search_terms"] == "São Paulo"
 
 
 @patch("mcp_brasil.data.anuncios_eleitorais.tools.client")

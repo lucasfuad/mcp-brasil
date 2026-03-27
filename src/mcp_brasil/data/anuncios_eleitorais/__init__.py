@@ -9,7 +9,7 @@ FEATURE_META = FeatureMeta(
         "e sobre temas sociais, eleições ou política veiculados no Brasil"
     ),
     version="0.1.0",
-    api_base="https://graph.facebook.com/v21.0",
+    api_base="https://graph.facebook.com/v25.0",
     requires_auth=True,
     auth_env_var="META_ACCESS_TOKEN",
     tags=["eleicoes", "politica", "anuncios", "meta", "facebook", "instagram", "transparencia"],
