@@ -2,218 +2,110 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
-# ---------------------------------------------------------------------------
-# Acórdãos
-# ---------------------------------------------------------------------------
+from pydantic import BaseModel, Field
 
 
 class Acordao(BaseModel):
     """Acórdão (decisão colegiada) do TCU."""
 
-    key: str | None = None
-    tipo: str | None = None
-    ano_acordao: str | None = None
-    titulo: str | None = None
-    numero_acordao: str | None = None
-    numero_ata: str | None = None
-    colegiado: str | None = None
-    data_sessao: str | None = None
-    relator: str | None = None
-    situacao: str | None = None
-    sumario: str | None = None
-    url_acordao: str | None = None
+    key: str = Field(description="Identificador único (ex: ACORDAO-COMPLETO-2745491)")
+    tipo: str = ""
+    ano_acordao: str = Field(default="", alias="anoAcordao")
+    titulo: str = ""
+    numero_acordao: str = Field(default="", alias="numeroAcordao")
+    numero_ata: str = Field(default="", alias="numeroAta")
+    colegiado: str = ""
+    data_sessao: str = Field(default="", alias="dataSessao")
+    relator: str = ""
+    situacao: str = ""
+    sumario: str = ""
+    url_acordao: str = Field(default="", alias="urlAcordao")
 
-
-# ---------------------------------------------------------------------------
-# Inabilitados
-# ---------------------------------------------------------------------------
+    model_config = {"populate_by_name": True}
 
 
 class Inabilitado(BaseModel):
-    """Pessoa inabilitada para função pública por decisão do TCU."""
+    """Pessoa inabilitada para exercer cargo/função pública pelo TCU."""
 
-    nome: str | None = None
-    cpf: str | None = None
-    processo: str | None = None
-    deliberacao: str | None = None
-    data_transito_julgado: str | None = None
-    data_final: str | None = None
-    data_acordao: str | None = None
-    uf: str | None = None
-    municipio: str | None = None
-
-
-class InabilitadoResultado(BaseModel):
-    """Resultado paginado de inabilitados (ORDS)."""
-
-    items: list[Inabilitado] = []
-    has_more: bool = False
-    limit: int = 25
-    offset: int = 0
-    count: int = 0
-
-
-# ---------------------------------------------------------------------------
-# Inidôneos
-# ---------------------------------------------------------------------------
+    nome: str = ""
+    cpf: str = ""
+    processo: str = ""
+    deliberacao: str = ""
+    data_transito_julgado: str = ""
+    data_final: str = ""
+    data_acordao: str = ""
+    uf: str = ""
+    municipio: str = ""
 
 
 class Inidoneo(BaseModel):
     """Licitante declarado inidôneo pelo TCU."""
 
-    nome: str | None = None
-    cpf_cnpj: str | None = None
-    processo: str | None = None
-    deliberacao: str | None = None
-    data_transito_julgado: str | None = None
-    data_final: str | None = None
-    data_acordao: str | None = None
-    uf: str | None = None
+    nome: str = ""
+    cpf_cnpj: str = ""
+    processo: str = ""
+    deliberacao: str = ""
+    data_transito_julgado: str = ""
+    data_final: str = ""
+    data_acordao: str = ""
+    uf: str = ""
     municipio: str | None = None
 
 
-class InidoneoResultado(BaseModel):
-    """Resultado paginado de inidôneos (ORDS)."""
-
-    items: list[Inidoneo] = []
-    has_more: bool = False
-    limit: int = 25
-    offset: int = 0
-    count: int = 0
-
-
-# ---------------------------------------------------------------------------
-# Certidões APF
-# ---------------------------------------------------------------------------
-
-
-class TipoCertidao(BaseModel):
-    """Tipo de certidão disponível no sistema APF."""
-
-    orgao_emissor: str
-    sigla: str
-    descricao: str
-
-
 class CertidaoItem(BaseModel):
-    """Certidão individual dentro do resultado consolidado."""
+    """Certidão individual dentro da consulta consolidada."""
 
-    emissor: str | None = None
-    tipo: str | None = None
-    data_hora_emissao: str | None = None
-    descricao: str | None = None
-    situacao: str | None = None
+    emissor: str = ""
+    tipo: str = ""
+    descricao: str = ""
+    situacao: str = ""
     observacao: str | None = None
-    link_consulta_manual: str | None = None
+    data_hora_emissao: str = Field(default="", alias="dataHoraEmissao")
+
+    model_config = {"populate_by_name": True}
 
 
-class CertidaoResultado(BaseModel):
-    """Resultado consolidado de certidões para um CNPJ."""
+class CertidaoConsolidada(BaseModel):
+    """Resultado consolidado de certidões de pessoa jurídica."""
 
-    razao_social: str | None = None
-    nome_fantasia: str | None = None
-    cnpj: str | None = None
-    uf: str | None = None
+    razao_social: str = Field(default="", alias="razaoSocial")
+    nome_fantasia: str = Field(default="", alias="nomeFantasia")
+    cnpj: str = ""
     certidoes: list[CertidaoItem] = []
-    cnpj_encontrado_base_tcu: bool = False
+    se_cnpj_encontrado: bool = Field(default=False, alias="seCnpjEncontradoNaBaseTcu")
 
-
-# ---------------------------------------------------------------------------
-# Cálculo de débito
-# ---------------------------------------------------------------------------
-
-
-class ParcelaDebito(BaseModel):
-    """Parcela de débito para cálculo."""
-
-    data_fato: str
-    indicativo_debito_credito: str = "D"
-    valor_original: float
-
-
-class CalculoDebitoResultado(BaseModel):
-    """Resultado do cálculo de débito atualizado."""
-
-    data: str | None = None
-    saldo_debito: float = 0.0
-    saldo_variacao_selic: float = 0.0
-    saldo_juros: float = 0.0
-    saldo_total: float = 0.0
-
-
-# ---------------------------------------------------------------------------
-# Pedidos do Congresso
-# ---------------------------------------------------------------------------
+    model_config = {"populate_by_name": True}
 
 
 class PedidoCongresso(BaseModel):
     """Solicitação do Congresso Nacional ao TCU."""
 
-    tipo: str | None = None
-    numero: int | None = None
-    data_aprovacao: str | None = None
-    assunto: str | None = None
+    tipo: str = ""
+    numero: int = 0
+    data_aprovacao: str = ""
+    assunto: str = ""
     autor: str | None = None
-    processo_scn: str | None = None
-    link_proposicao: str | None = None
+    processo_scn: str = ""
+    link_proposicao: str = ""
 
 
-class PedidoCongressoResultado(BaseModel):
-    """Resultado paginado de pedidos do Congresso."""
+class ParcelaDebito(BaseModel):
+    """Parcela de débito para cálculo."""
 
-    items: list[PedidoCongresso] = []
-    has_next: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Termos contratuais do TCU
-# ---------------------------------------------------------------------------
+    data_fato: str = Field(description="Data do fato gerador (DD/MM/AAAA)")
+    indicativo: str = Field(
+        default="D", description="D para débito, C para crédito"
+    )
+    valor_original: float = Field(description="Valor original da parcela")
 
 
-class UnidadeFiscalizadora(BaseModel):
-    """Unidade fiscalizadora do TCU."""
+class ResultadoDebito(BaseModel):
+    """Resultado do cálculo de débito."""
 
-    codigo: int | None = None
-    sigla: str | None = None
-    nome: str | None = None
+    data: str = ""
+    saldo_debito: float = Field(default=0.0, alias="saldoDebito")
+    saldo_variacao_selic: float = Field(default=0.0, alias="saldoVariacaoSelic")
+    saldo_juros: float = Field(default=0.0, alias="saldoJuros")
+    saldo_total: float = Field(default=0.0, alias="saldoTotal")
 
-
-class TermoContratual(BaseModel):
-    """Contrato ou termo contratual firmado pelo TCU."""
-
-    tipo_contratacao: str | None = None
-    numero: int | None = None
-    ano: int | None = None
-    unidade_gestora: str | None = None
-    nome_fornecedor: str | None = None
-    cnpj_fornecedor: str | None = None
-    objeto: str | None = None
-    valor_inicial: float | None = None
-    valor_atualizado: float | None = None
-    data_assinatura: str | None = None
-    data_inicio_vigencia: str | None = None
-    data_termino_vigencia: str | None = None
-    modalidade_licitacao: str | None = None
-    numero_processo: str | None = None
-    numero_aditamentos: int | None = None
-    unidades_fiscalizadoras: list[UnidadeFiscalizadora] = []
-
-
-# ---------------------------------------------------------------------------
-# CADIRREG
-# ---------------------------------------------------------------------------
-
-
-class PessoaCadirreg(BaseModel):
-    """Pessoa com contas julgadas irregulares pelo TCU."""
-
-    nome_responsavel: str | None = None
-    cpf: str | None = None
-    num_processo: str | None = None
-    ano_processo: str | None = None
-    julgamento: str | None = None
-    unidade_tecnica_processo: str | None = None
-    se_detentor_cargo_funcao_publica: str | None = None
-    se_falecido: str | None = None
+    model_config = {"populate_by_name": True}

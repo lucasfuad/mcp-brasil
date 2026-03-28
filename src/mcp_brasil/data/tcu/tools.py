@@ -10,405 +10,239 @@ from __future__ import annotations
 
 from fastmcp import Context
 
-from mcp_brasil._shared.formatting import format_brl
+from mcp_brasil._shared.formatting import markdown_table
 
 from . import client
-from .schemas import ParcelaDebito
-
-# ---------------------------------------------------------------------------
-# buscar_acordaos
-# ---------------------------------------------------------------------------
 
 
-async def buscar_acordaos(
+async def consultar_acordaos(
     ctx: Context,
+    quantidade: int = 10,
     inicio: int = 0,
-    quantidade: int = 20,
 ) -> str:
-    """Busca acórdãos (decisões colegiadas) do TCU.
+    """Consulta acórdãos (decisões colegiadas) do TCU.
 
-    Acórdãos são as decisões formais do Tribunal de Contas da União, incluindo
-    julgamentos de contas, auditorias e recursos. Retorna decisões recentes
-    por padrão (mais recentes primeiro).
+    Acórdãos são decisões dos colegiados do TCU (Plenário, 1ª e 2ª Câmaras).
+    Retorna título, relator, colegiado, data da sessão e sumário.
 
     Args:
-        ctx: Contexto MCP.
-        inicio: Índice inicial para paginação (0 = mais recentes).
-        quantidade: Quantidade de acórdãos a retornar (máx ~50).
+        quantidade: Quantidade de acórdãos a retornar (padrão: 10, máximo recomendado: 50).
+        inicio: Índice inicial para paginação (padrão: 0).
 
     Returns:
-        Lista formatada de acórdãos com título, colegiado, relator e sumário.
+        Tabela com os acórdãos encontrados.
     """
-    await ctx.info(f"Buscando acórdãos do TCU (início={inicio})...")
-    acordaos = await client.buscar_acordaos(inicio=inicio, quantidade=quantidade)
+    await ctx.info(f"Buscando {quantidade} acórdãos do TCU (início: {inicio})...")
+    acordaos = await client.consultar_acordaos(inicio=inicio, quantidade=quantidade)
+    await ctx.info(f"{len(acordaos)} acórdãos encontrados")
 
     if not acordaos:
         return "Nenhum acórdão encontrado."
 
-    lines: list[str] = [f"**{len(acordaos)} acórdãos do TCU:**\n"]
-    for a in acordaos[:20]:
-        lines.append(f"### {a.titulo or 'Sem título'}")
-        lines.append(f"- **Colegiado:** {a.colegiado or '—'}")
-        lines.append(f"- **Relator:** {a.relator or '—'}")
-        lines.append(f"- **Data sessão:** {a.data_sessao or '—'}")
-        lines.append(f"- **Situação:** {a.situacao or '—'}")
-        if a.sumario:
-            sumario = a.sumario[:300] + "..." if len(a.sumario) > 300 else a.sumario
-            lines.append(f"- **Sumário:** {sumario}")
-        if a.url_acordao:
-            lines.append(f"- **Link:** {a.url_acordao}")
-        lines.append("")
-
-    if len(acordaos) >= quantidade:
-        lines.append(
-            f"\n*Página com {quantidade} resultados. "
-            f"Use inicio={inicio + quantidade} para próxima página.*"
+    rows = [
+        (
+            a.numero_acordao,
+            a.ano_acordao,
+            a.colegiado,
+            a.relator,
+            a.data_sessao,
+            a.sumario[:100] + "..." if len(a.sumario) > 100 else a.sumario,
         )
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# consultar_inabilitados
-# ---------------------------------------------------------------------------
+        for a in acordaos
+    ]
+    return markdown_table(
+        ["Número", "Ano", "Colegiado", "Relator", "Data Sessão", "Sumário"],
+        rows,
+    )
 
 
 async def consultar_inabilitados(
     ctx: Context,
     cpf: str | None = None,
-    offset: int = 0,
-    limit: int = 25,
+    limite: int = 25,
+    inicio: int = 0,
 ) -> str:
-    """Consulta pessoas inabilitadas para exercer função pública por decisão do TCU.
+    """Consulta pessoas inabilitadas para exercer cargo/função pública pelo TCU.
 
-    Pessoas inabilitadas não podem exercer cargo em comissão ou função de
-    confiança na Administração Pública Federal. Permite buscar por CPF
-    específico ou listar todos.
+    Inabilitados são pessoas que foram proibidas pelo TCU de exercer cargo em
+    comissão ou função de confiança na Administração Pública Federal.
+
+    Pode buscar todos os inabilitados ou filtrar por CPF específico.
 
     Args:
-        ctx: Contexto MCP.
-        cpf: CPF para consulta específica (somente números).
-        offset: Deslocamento para paginação.
-        limit: Quantidade por página (padrão 25).
+        cpf: CPF (somente números) para buscar pessoa específica. Se omitido, lista todos.
+        limite: Quantidade de registros por página (padrão: 25).
+        inicio: Deslocamento para paginação (padrão: 0).
 
     Returns:
-        Lista de pessoas inabilitadas com dados da sanção.
+        Tabela com os inabilitados encontrados.
     """
-    await ctx.info("Consultando inabilitados no TCU...")
-    resultado = await client.consultar_inabilitados(cpf=cpf, offset=offset, limit=limit)
+    if cpf:
+        await ctx.info(f"Buscando inabilitado com CPF {cpf}...")
+    else:
+        await ctx.info(f"Buscando inabilitados (limite: {limite}, início: {inicio})...")
 
-    if not resultado.items:
-        if cpf:
-            return f"CPF {cpf} **não consta** na lista de inabilitados do TCU."
+    inabilitados = await client.consultar_inabilitados(
+        cpf=cpf, offset=inicio, limit=limite
+    )
+    await ctx.info(f"{len(inabilitados)} inabilitado(s) encontrado(s)")
+
+    if not inabilitados:
         return "Nenhum inabilitado encontrado."
 
-    lines: list[str] = [f"**{resultado.count} inabilitado(s) encontrado(s):**\n"]
-    for item in resultado.items:
-        lines.append(f"### {item.nome or '—'}")
-        lines.append(f"- **CPF:** {item.cpf or '—'}")
-        lines.append(f"- **Processo:** {item.processo or '—'}")
-        lines.append(f"- **Deliberação:** {item.deliberacao or '—'}")
-        lines.append(f"- **UF:** {item.uf or '—'}")
-        if item.data_final:
-            lines.append(f"- **Inabilitado até:** {item.data_final}")
-        lines.append("")
-
-    if resultado.has_more:
-        next_offset = resultado.offset + resultado.limit
-        lines.append(
-            f"*Mais resultados disponíveis. Use offset={next_offset} para próxima página.*"
+    rows = [
+        (
+            i.nome,
+            i.cpf,
+            i.processo,
+            i.deliberacao,
+            i.data_final[:10] if i.data_final else "—",
+            i.uf,
         )
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# consultar_inidoneos
-# ---------------------------------------------------------------------------
+        for i in inabilitados
+    ]
+    return markdown_table(
+        ["Nome", "CPF", "Processo", "Deliberação", "Data Final", "UF"],
+        rows,
+    )
 
 
 async def consultar_inidoneos(
     ctx: Context,
     cpf_cnpj: str | None = None,
-    offset: int = 0,
-    limit: int = 25,
+    limite: int = 25,
+    inicio: int = 0,
 ) -> str:
     """Consulta licitantes declarados inidôneos pelo TCU.
 
-    Empresas e pessoas declaradas inidôneas não podem participar de
-    licitações na Administração Pública Federal. Permite buscar por
-    CPF/CNPJ específico ou listar todos.
+    Inidôneos são empresas ou pessoas que foram declaradas inidôneas pelo TCU
+    e estão impedidas de participar de licitações na Administração Pública.
+
+    Pode buscar todos os inidôneos ou filtrar por CPF/CNPJ específico.
 
     Args:
-        ctx: Contexto MCP.
-        cpf_cnpj: CPF ou CNPJ para consulta específica (somente números).
-        offset: Deslocamento para paginação.
-        limit: Quantidade por página (padrão 25).
+        cpf_cnpj: CPF ou CNPJ (somente números) para buscar. Se omitido, lista todos.
+        limite: Quantidade de registros por página (padrão: 25).
+        inicio: Deslocamento para paginação (padrão: 0).
 
     Returns:
-        Lista de licitantes inidôneos com dados da sanção.
+        Tabela com os licitantes inidôneos encontrados.
     """
-    await ctx.info("Consultando inidôneos no TCU...")
-    resultado = await client.consultar_inidoneos(cpf_cnpj=cpf_cnpj, offset=offset, limit=limit)
+    if cpf_cnpj:
+        await ctx.info(f"Buscando inidôneo com CPF/CNPJ {cpf_cnpj}...")
+    else:
+        await ctx.info(f"Buscando inidôneos (limite: {limite}, início: {inicio})...")
 
-    if not resultado.items:
-        if cpf_cnpj:
-            return f"CPF/CNPJ {cpf_cnpj} **não consta** na lista de inidôneos do TCU."
-        return "Nenhum inidôneo encontrado."
+    inidoneos = await client.consultar_inidoneos(
+        cpf_cnpj=cpf_cnpj, offset=inicio, limit=limite
+    )
+    await ctx.info(f"{len(inidoneos)} inidôneo(s) encontrado(s)")
 
-    lines: list[str] = [f"**{resultado.count} inidôneo(s) encontrado(s):**\n"]
-    for item in resultado.items:
-        lines.append(f"### {item.nome or '—'}")
-        lines.append(f"- **CPF/CNPJ:** {item.cpf_cnpj or '—'}")
-        lines.append(f"- **Processo:** {item.processo or '—'}")
-        lines.append(f"- **Deliberação:** {item.deliberacao or '—'}")
-        lines.append(f"- **UF:** {item.uf or '—'}")
-        if item.data_final:
-            lines.append(f"- **Inidôneo até:** {item.data_final}")
-        lines.append("")
+    if not inidoneos:
+        return "Nenhum licitante inidôneo encontrado."
 
-    if resultado.has_more:
-        next_offset = resultado.offset + resultado.limit
-        lines.append(
-            f"*Mais resultados disponíveis. Use offset={next_offset} para próxima página.*"
+    rows = [
+        (
+            i.nome,
+            i.cpf_cnpj,
+            i.processo,
+            i.deliberacao,
+            i.data_final[:10] if i.data_final else "—",
+            i.uf,
         )
+        for i in inidoneos
+    ]
+    return markdown_table(
+        ["Nome", "CPF/CNPJ", "Processo", "Deliberação", "Data Final", "UF"],
+        rows,
+    )
 
-    return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# consultar_certidoes_apf
-# ---------------------------------------------------------------------------
-
-
-async def consultar_certidoes_apf(cnpj: str, ctx: Context) -> str:
-    """Consulta certidões consolidadas de pessoa jurídica (APF).
+async def consultar_certidoes(ctx: Context, cnpj: str) -> str:
+    """Consulta certidões consolidadas de pessoa jurídica junto ao TCU, CNJ e CGU.
 
     Verifica a situação de uma empresa em 4 cadastros simultaneamente:
-    - **TCU Inidôneos**: licitantes declarados inidôneos
-    - **CNJ CNIA**: condenações por improbidade administrativa
-    - **CGU CEIS**: empresas inidôneas e suspensas
-    - **CGU CNEP**: empresas punidas
-
-    Muito útil para due diligence de fornecedores em licitações.
+    - TCU: Licitantes Inidôneos
+    - CNJ: CNIA (Condenações Cíveis por Improbidade)
+    - CGU: CEIS (Empresas Inidôneas e Suspensas)
+    - CGU: CNEP (Empresas Punidas)
 
     Args:
-        cnpj: CNPJ da empresa (somente números, 14 dígitos).
-        ctx: Contexto MCP.
+        cnpj: CNPJ da empresa (somente números, sem formatação).
 
     Returns:
-        Situação consolidada da empresa nos 4 cadastros.
+        Resultado consolidado das certidões.
     """
-    await ctx.info(f"Consultando certidões APF para CNPJ {cnpj}...")
-    resultado = await client.consultar_certidoes(cnpj)
+    await ctx.info(f"Consultando certidões para CNPJ {cnpj}...")
+    certidao = await client.consultar_certidoes(cnpj)
+    await ctx.info(f"Certidões recebidas para {certidao.razao_social}")
 
-    lines: list[str] = []
-    lines.append(f"## Certidões APF — {resultado.razao_social or cnpj}")
-    if resultado.nome_fantasia:
-        lines.append(f"**Nome fantasia:** {resultado.nome_fantasia}")
-    lines.append(f"**CNPJ:** {resultado.cnpj or cnpj}")
-    lines.append("")
-
-    if not resultado.certidoes:
-        lines.append("Nenhuma certidão retornada.")
-        return "\n".join(lines)
-
-    for cert in resultado.certidoes:
-        situacao = cert.situacao or "—"
-        emoji = "NADA_CONSTA" if situacao == "NADA_CONSTA" else "CONSTA"
-        status_label = "Nada consta" if emoji == "NADA_CONSTA" else situacao
-        lines.append(f"- **{cert.emissor} ({cert.tipo}):** {status_label}")
-        if cert.observacao:
-            lines.append(f"  - Obs: {cert.observacao}")
-
-    lines.append("")
-    if not resultado.cnpj_encontrado_base_tcu:
-        lines.append("*CNPJ não encontrado na base do TCU.*")
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# calcular_debito_tcu
-# ---------------------------------------------------------------------------
-
-
-async def calcular_debito_tcu(
-    data_atualizacao: str,
-    data_fato: str,
-    valor_original: float,
-    ctx: Context,
-    aplica_juros: bool = True,
-    tipo: str = "D",
-) -> str:
-    """Calcula débito atualizado com correção monetária (variação SELIC).
-
-    Usa a calculadora oficial do TCU para atualizar valores de débitos
-    apurados em processos de controle externo. Aplica correção monetária
-    pela variação da taxa SELIC e, opcionalmente, juros de mora.
-
-    Args:
-        data_atualizacao: Data de atualização no formato DD/MM/AAAA.
-        data_fato: Data do fato gerador no formato DD/MM/AAAA.
-        valor_original: Valor original do débito em reais.
-        ctx: Contexto MCP.
-        aplica_juros: Se deve aplicar juros de mora (padrão: True).
-        tipo: "D" para débito, "C" para crédito (padrão: "D").
-
-    Returns:
-        Detalhamento do cálculo com valor atualizado.
-    """
-    await ctx.info("Calculando débito atualizado no TCU...")
-    parcela = ParcelaDebito(
-        data_fato=data_fato,
-        indicativo_debito_credito=tipo,
-        valor_original=valor_original,
-    )
-    resultado = await client.calcular_debito(
-        data_atualizacao=data_atualizacao,
-        aplica_juros=aplica_juros,
-        parcelas=[parcela],
+    header = (
+        f"**{certidao.razao_social}**"
+        + (f" ({certidao.nome_fantasia})" if certidao.nome_fantasia else "")
+        + f"\nCNPJ: {certidao.cnpj}\n\n"
     )
 
-    lines = [
-        "## Cálculo de Débito — TCU\n",
-        f"- **Data do fato:** {data_fato}",
-        f"- **Data de atualização:** {resultado.data or data_atualizacao}",
-        f"- **Valor original:** {format_brl(valor_original)}",
-        f"- **Correção monetária (SELIC):** {format_brl(resultado.saldo_variacao_selic)}",
-        f"- **Juros de mora:** {format_brl(resultado.saldo_juros)}",
-        f"- **Valor total atualizado:** {format_brl(resultado.saldo_total)}",
+    if not certidao.certidoes:
+        return header + "Nenhuma certidão retornada."
+
+    rows = [
+        (
+            c.emissor,
+            c.tipo,
+            c.situacao,
+            c.observacao or "—",
+        )
+        for c in certidao.certidoes
     ]
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# buscar_pedidos_congresso
-# ---------------------------------------------------------------------------
+    return header + markdown_table(
+        ["Emissor", "Tipo", "Situação", "Observação"],
+        rows,
+    )
 
 
-async def buscar_pedidos_congresso(
+async def consultar_pedidos_congresso(
     ctx: Context,
-    processo: str | None = None,
-    page: int | None = None,
+    numero_processo: str | None = None,
+    pagina: int = 0,
 ) -> str:
-    """Busca solicitações do Congresso Nacional ao TCU.
+    """Consulta solicitações e pedidos do Congresso Nacional ao TCU.
 
-    Requerimentos e solicitações de informação feitos por parlamentares
-    ao Tribunal de Contas da União. Permite buscar por processo específico
-    ou listar todos os pedidos.
+    Inclui requerimentos (REQ) e solicitações de informação (SIT) feitos
+    por parlamentares ao Tribunal de Contas da União.
 
     Args:
-        ctx: Contexto MCP.
-        processo: Número do processo TCU para filtrar (ex: "004.808/2026-6").
-        page: Página dos resultados.
+        numero_processo: Número do processo TCU para buscar pedido específico.
+        pagina: Página dos resultados (padrão: 0).
 
     Returns:
-        Lista de pedidos com autor, assunto e links.
+        Tabela com os pedidos encontrados.
     """
-    await ctx.info("Buscando pedidos do Congresso ao TCU...")
-    resultado = await client.buscar_pedidos_congresso(processo=processo, page=page)
+    if numero_processo:
+        await ctx.info(f"Buscando pedido do processo {numero_processo}...")
+    else:
+        await ctx.info(f"Buscando pedidos do Congresso (página: {pagina})...")
 
-    if not resultado.items:
+    pedidos = await client.consultar_pedidos_congresso(
+        numero_processo=numero_processo, page=pagina
+    )
+    await ctx.info(f"{len(pedidos)} pedido(s) encontrado(s)")
+
+    if not pedidos:
         return "Nenhum pedido do Congresso encontrado."
 
-    lines: list[str] = [f"**{len(resultado.items)} pedido(s) do Congresso:**\n"]
-    for item in resultado.items[:20]:
-        lines.append(f"### {item.tipo or '—'} nº {item.numero or '—'}")
-        lines.append(f"- **Autor:** {item.autor or '—'}")
-        lines.append(f"- **Processo:** {item.processo_scn or '—'}")
-        if item.data_aprovacao:
-            lines.append(f"- **Data aprovação:** {item.data_aprovacao}")
-        if item.assunto:
-            assunto = item.assunto[:300] + "..." if len(item.assunto) > 300 else item.assunto
-            lines.append(f"- **Assunto:** {assunto}")
-        lines.append("")
-
-    if resultado.has_next:
-        next_page = (page or 0) + 1
-        lines.append(f"*Mais resultados. Use page={next_page} para próxima página.*")
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# buscar_contratos_tcu
-# ---------------------------------------------------------------------------
-
-
-async def buscar_contratos_tcu(ctx: Context) -> str:
-    """Busca contratos e termos contratuais firmados pelo próprio TCU.
-
-    Retorna a lista completa de contratos do Tribunal de Contas da União,
-    incluindo contratações por nota de empenho, pregões e dispensas.
-    Útil para transparência dos gastos do próprio órgão de controle.
-
-    Args:
-        ctx: Contexto MCP.
-
-    Returns:
-        Lista resumida dos contratos mais recentes do TCU.
-    """
-    await ctx.info("Buscando contratos do TCU...")
-    contratos = await client.buscar_contratos_tcu()
-
-    if not contratos:
-        return "Nenhum contrato do TCU encontrado."
-
-    # Sort by year desc, show most recent
-    contratos.sort(key=lambda c: (c.ano or 0, c.numero or 0), reverse=True)
-    amostra = contratos[:20]
-
-    lines: list[str] = [
-        f"**{len(contratos)} contratos do TCU** (mostrando {len(amostra)} mais recentes):\n"
+    rows = [
+        (
+            p.tipo,
+            str(p.numero),
+            p.data_aprovacao[:10] if p.data_aprovacao else "—",
+            p.autor or "—",
+            p.processo_scn,
+            p.assunto[:80] + "..." if len(p.assunto) > 80 else p.assunto,
+        )
+        for p in pedidos
     ]
-    for c in amostra:
-        valor = format_brl(c.valor_atualizado) if c.valor_atualizado else "—"
-        lines.append(f"### {c.numero or '—'}/{c.ano or '—'}")
-        lines.append(f"- **Fornecedor:** {c.nome_fornecedor or '—'}")
-        lines.append(f"- **Objeto:** {c.objeto or '—'}")
-        lines.append(f"- **Valor atualizado:** {valor}")
-        lines.append(f"- **Modalidade:** {c.modalidade_licitacao or '—'}")
-        lines.append(f"- **Processo:** {c.numero_processo or '—'}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# consultar_cadirreg
-# ---------------------------------------------------------------------------
-
-
-async def consultar_cadirreg(cpf: str, ctx: Context) -> str:
-    """Consulta pessoa no CADIRREG — Cadastro de Responsáveis com Contas Irregulares.
-
-    Verifica se um CPF possui contas julgadas irregulares pelo TCU.
-    Pessoas neste cadastro tiveram suas contas reprovadas em processos
-    de controle externo.
-
-    Args:
-        cpf: CPF da pessoa (somente números, 11 dígitos).
-        ctx: Contexto MCP.
-
-    Returns:
-        Dados das contas irregulares ou confirmação de nada consta.
-    """
-    await ctx.info(f"Consultando CADIRREG para CPF {cpf}...")
-    registros = await client.consultar_cadirreg(cpf)
-
-    if not registros:
-        return f"CPF {cpf} **não consta** no CADIRREG do TCU."
-
-    lines: list[str] = [f"**{len(registros)} registro(s) no CADIRREG para CPF {cpf}:**\n"]
-    for r in registros:
-        lines.append(f"### {r.nome_responsavel or '—'}")
-        lines.append(f"- **Processo:** {r.num_processo or '—'}/{r.ano_processo or '—'}")
-        lines.append(f"- **Julgamento:** {r.julgamento or '—'}")
-        lines.append(f"- **Unidade técnica:** {r.unidade_tecnica_processo or '—'}")
-        if r.se_detentor_cargo_funcao_publica:
-            lines.append(f"- **Detentor de cargo público:** {r.se_detentor_cargo_funcao_publica}")
-        lines.append("")
-
-    return "\n".join(lines)
+    return markdown_table(
+        ["Tipo", "Número", "Data Aprovação", "Autor", "Processo", "Assunto"],
+        rows,
+    )

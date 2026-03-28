@@ -4,35 +4,61 @@ from __future__ import annotations
 
 import json
 
+from .constants import COLEGIADOS, SITUACOES_ACORDAO
 
-def tipos_certidoes_apf() -> str:
-    """Tipos de certidões consolidadas disponíveis no sistema APF do TCU.
 
-    O sistema APF (Administração Pública Federal) consulta 4 cadastros
-    de sanções simultaneamente para verificar a situação de uma empresa.
-    """
-    tipos = [
+def catalogo_endpoints() -> str:
+    """Catálogo dos endpoints disponíveis do TCU."""
+    endpoints = [
         {
-            "orgao_emissor": "TCU",
-            "sigla": "Inidoneos",
-            "descricao": "Licitantes Inidôneos — empresas/pessoas declaradas "
-            "inidôneas pelo TCU para participar de licitações",
+            "nome": "Acórdãos",
+            "descricao": "Decisões colegiadas do TCU",
+            "status": "ATIVO",
         },
         {
-            "orgao_emissor": "CNJ",
-            "sigla": "CNIA",
-            "descricao": "Cadastro Nacional de Condenações Cíveis por Ato de "
-            "Improbidade Administrativa e Inelegibilidade",
+            "nome": "Inabilitados",
+            "descricao": "Pessoas inabilitadas para função pública",
+            "status": "ATIVO",
         },
         {
-            "orgao_emissor": "Portal da Transparência",
-            "sigla": "CEIS",
-            "descricao": "Cadastro Nacional de Empresas Inidôneas e Suspensas — mantido pela CGU",
+            "nome": "Inidôneos",
+            "descricao": "Licitantes declarados inidôneos",
+            "status": "ATIVO",
         },
         {
-            "orgao_emissor": "Portal da Transparência",
-            "sigla": "CNEP",
-            "descricao": "Cadastro Nacional de Empresas Punidas — mantido pela CGU",
+            "nome": "Certidões APF",
+            "descricao": "Certidões consolidadas (TCU + CNJ + CGU)",
+            "status": "ATIVO",
+        },
+        {
+            "nome": "Pedidos do Congresso",
+            "descricao": "Solicitações do Congresso ao TCU",
+            "status": "ATIVO",
+        },
+        {
+            "nome": "Cálculo de Débito",
+            "descricao": "Calculadora de débito com correção SELIC",
+            "status": "ATIVO",
+        },
+        {
+            "nome": "Termos Contratuais",
+            "descricao": "Contratos firmados pelo TCU",
+            "status": "ATIVO",
+        },
+        {
+            "nome": "CADIRREG",
+            "descricao": "Cadastro de responsáveis com contas irregulares",
+            "status": "ATIVO",
         },
     ]
-    return json.dumps(tipos, ensure_ascii=False, indent=2)
+    return json.dumps(endpoints, ensure_ascii=False, indent=2)
+
+
+def colegiados() -> str:
+    """Colegiados do TCU que emitem acórdãos."""
+    return json.dumps(COLEGIADOS, ensure_ascii=False)
+
+
+def situacoes_acordao() -> str:
+    """Situações possíveis de um acórdão do TCU."""
+    return json.dumps(SITUACOES_ACORDAO, ensure_ascii=False)

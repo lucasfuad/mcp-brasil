@@ -7,94 +7,106 @@ import pytest
 from mcp_brasil.data.tcu import tools
 from mcp_brasil.data.tcu.schemas import (
     Acordao,
-    CalculoDebitoResultado,
+    CertidaoConsolidada,
     CertidaoItem,
-    CertidaoResultado,
     Inabilitado,
-    InabilitadoResultado,
     Inidoneo,
-    InidoneoResultado,
     PedidoCongresso,
-    PedidoCongressoResultado,
-    PessoaCadirreg,
-    TermoContratual,
 )
 
 CLIENT_MODULE = "mcp_brasil.data.tcu.client"
 
 
 def _mock_ctx() -> MagicMock:
+    """Create a mock Context with async log methods."""
     ctx = MagicMock()
     ctx.info = AsyncMock()
     ctx.warning = AsyncMock()
     return ctx
 
 
-# ---------------------------------------------------------------------------
-# buscar_acordaos
-# ---------------------------------------------------------------------------
-
-
-class TestBuscarAcordaos:
+class TestConsultarAcordaos:
     @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
+    async def test_formats_table(self) -> None:
         mock_data = [
             Acordao(
-                key="ACORDAO-123",
-                titulo="ACORDAO 100/2026 - PLENARIO",
-                colegiado="Plenario",
+                key="ACORDAO-COMPLETO-123",
+                tipo="ACORDAO",
+                anoAcordao="2026",
+                titulo="ACORDAO 100/2026 ATA 1/2026 - PLENARIO",
+                numeroAcordao="100",
+                numeroAta="1/2026",
+                colegiado="Plenário",
+                dataSessao="18/03/2026",
                 relator="BRUNO DANTAS",
-                data_sessao="18/03/2026",
                 situacao="OFICIALIZADO",
-                sumario="Embargos de declaração em pedido de reconsideração",
+                sumario="EMBARGOS DE DECLARAÇÃO",
+                urlAcordao="https://contas.tcu.gov.br/...",
             ),
         ]
         ctx = _mock_ctx()
         with patch(
-            f"{CLIENT_MODULE}.buscar_acordaos",
+            f"{CLIENT_MODULE}.consultar_acordaos",
             new_callable=AsyncMock,
             return_value=mock_data,
         ):
-            result = await tools.buscar_acordaos(ctx)
-        assert "ACORDAO 100/2026 - PLENARIO" in result
+            result = await tools.consultar_acordaos(ctx)
+        assert "100" in result
+        assert "2026" in result
+        assert "Plenário" in result
         assert "BRUNO DANTAS" in result
-        assert "Plenario" in result
-        assert "Embargos de declaração" in result
 
     @pytest.mark.asyncio
-    async def test_empty_results(self) -> None:
+    async def test_empty(self) -> None:
         ctx = _mock_ctx()
         with patch(
-            f"{CLIENT_MODULE}.buscar_acordaos",
+            f"{CLIENT_MODULE}.consultar_acordaos",
             new_callable=AsyncMock,
             return_value=[],
         ):
-            result = await tools.buscar_acordaos(ctx)
-        assert "Nenhum acórdão encontrado" in result
+            result = await tools.consultar_acordaos(ctx)
+        assert "Nenhum acórdão" in result
 
-
-# ---------------------------------------------------------------------------
-# consultar_inabilitados
-# ---------------------------------------------------------------------------
+    @pytest.mark.asyncio
+    async def test_truncates_long_sumario(self) -> None:
+        mock_data = [
+            Acordao(
+                key="ACORDAO-COMPLETO-456",
+                anoAcordao="2026",
+                numeroAcordao="200",
+                numeroAta="2/2026",
+                colegiado="1ª Câmara",
+                dataSessao="19/03/2026",
+                relator="ANA ARRAES",
+                sumario="A" * 200,
+            ),
+        ]
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.consultar_acordaos",
+            new_callable=AsyncMock,
+            return_value=mock_data,
+        ):
+            result = await tools.consultar_acordaos(ctx)
+        assert "..." in result
 
 
 class TestConsultarInabilitados:
     @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = InabilitadoResultado(
-            items=[
-                Inabilitado(
-                    nome="FULANO DA SILVA",
-                    cpf="123.456.789-00",
-                    processo="026.615/2020-7",
-                    deliberacao="AC-000738/2022-PL",
-                    data_final="2027-07-16T03:00:00Z",
-                    uf="MA",
-                ),
-            ],
-            has_more=False,
-            count=1,
-        )
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            Inabilitado(
+                nome="FULANO DA SILVA",
+                cpf="123.456.789-00",
+                processo="026.615/2020-7",
+                deliberacao="AC-000738/2022-PL",
+                data_transito_julgado="2022-07-16T03:00:00Z",
+                data_final="2027-07-16T03:00:00Z",
+                data_acordao="2022-04-06T17:30:00Z",
+                uf="MA",
+                municipio="SANTA INES",
+            ),
+        ]
         ctx = _mock_ctx()
         with patch(
             f"{CLIENT_MODULE}.consultar_inabilitados",
@@ -104,40 +116,60 @@ class TestConsultarInabilitados:
             result = await tools.consultar_inabilitados(ctx)
         assert "FULANO DA SILVA" in result
         assert "123.456.789-00" in result
-        assert "026.615/2020-7" in result
+        assert "MA" in result
 
     @pytest.mark.asyncio
-    async def test_not_found_by_cpf(self) -> None:
-        mock_data = InabilitadoResultado(items=[], count=0)
+    async def test_empty(self) -> None:
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.consultar_inabilitados",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await tools.consultar_inabilitados(ctx)
+        assert "Nenhum inabilitado" in result
+
+    @pytest.mark.asyncio
+    async def test_with_cpf(self) -> None:
+        mock_data = [
+            Inabilitado(
+                nome="BELTRANO",
+                cpf="999.888.777-66",
+                processo="001.000/2023-1",
+                deliberacao="AC-001000/2023-PL",
+                data_transito_julgado="2023-01-01T00:00:00Z",
+                data_final="2028-01-01T00:00:00Z",
+                data_acordao="2023-01-01T00:00:00Z",
+                uf="SP",
+                municipio="SAO PAULO",
+            ),
+        ]
         ctx = _mock_ctx()
         with patch(
             f"{CLIENT_MODULE}.consultar_inabilitados",
             new_callable=AsyncMock,
             return_value=mock_data,
-        ):
-            result = await tools.consultar_inabilitados(ctx, cpf="12345678900")
-        assert "não consta" in result
-
-
-# ---------------------------------------------------------------------------
-# consultar_inidoneos
-# ---------------------------------------------------------------------------
+        ) as mock_client:
+            result = await tools.consultar_inabilitados(ctx, cpf="99988877766")
+        mock_client.assert_called_once_with(cpf="99988877766", offset=0, limit=25)
+        assert "BELTRANO" in result
 
 
 class TestConsultarInidoneos:
     @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = InidoneoResultado(
-            items=[
-                Inidoneo(
-                    nome="EMPRESA LTDA",
-                    cpf_cnpj="07.405.573/0001-44",
-                    processo="007.720/2012-2",
-                    uf="DF",
-                ),
-            ],
-            count=1,
-        )
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            Inidoneo(
+                nome="EMPRESA LTDA",
+                cpf_cnpj="07.405.573/0001-44",
+                processo="007.720/2012-2",
+                deliberacao="AC-002099/2015-PL",
+                data_transito_julgado="2021-09-30T03:00:00Z",
+                data_final="2026-09-30T03:00:00Z",
+                data_acordao="2015-08-19T17:30:00Z",
+                uf="DF",
+            ),
+        ]
         ctx = _mock_ctx()
         with patch(
             f"{CLIENT_MODULE}.consultar_inidoneos",
@@ -147,45 +179,44 @@ class TestConsultarInidoneos:
             result = await tools.consultar_inidoneos(ctx)
         assert "EMPRESA LTDA" in result
         assert "07.405.573/0001-44" in result
+        assert "DF" in result
 
     @pytest.mark.asyncio
-    async def test_not_found_by_cnpj(self) -> None:
-        mock_data = InidoneoResultado(items=[], count=0)
+    async def test_empty(self) -> None:
         ctx = _mock_ctx()
         with patch(
             f"{CLIENT_MODULE}.consultar_inidoneos",
             new_callable=AsyncMock,
-            return_value=mock_data,
+            return_value=[],
         ):
-            result = await tools.consultar_inidoneos(ctx, cpf_cnpj="12345678000100")
-        assert "não consta" in result
+            result = await tools.consultar_inidoneos(ctx)
+        assert "Nenhum licitante inidôneo" in result
 
 
-# ---------------------------------------------------------------------------
-# consultar_certidoes_apf
-# ---------------------------------------------------------------------------
-
-
-class TestConsultarCertidoesApf:
+class TestConsultarCertidoes:
     @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = CertidaoResultado(
-            razao_social="Banco do Brasil S.A.",
-            nome_fantasia="BB",
+    async def test_formats_result(self) -> None:
+        mock_data = CertidaoConsolidada(
+            razaoSocial="Banco do Brasil S.A.",
+            nomeFantasia="BB",
             cnpj="00.000.000/0001-91",
             certidoes=[
                 CertidaoItem(
                     emissor="TCU",
                     tipo="Inidoneos",
+                    descricao="Licitantes Inidôneos",
                     situacao="NADA_CONSTA",
+                    dataHoraEmissao="22/03/2026 23:14",
                 ),
                 CertidaoItem(
                     emissor="CNJ",
                     tipo="CNIA",
+                    descricao="CNIA",
                     situacao="NADA_CONSTA",
+                    dataHoraEmissao="22/03/2026 23:14",
                 ),
             ],
-            cnpj_encontrado_base_tcu=True,
+            seCnpjEncontradoNaBaseTcu=True,
         )
         ctx = _mock_ctx()
         with patch(
@@ -193,161 +224,63 @@ class TestConsultarCertidoesApf:
             new_callable=AsyncMock,
             return_value=mock_data,
         ):
-            result = await tools.consultar_certidoes_apf("00000000000191", ctx)
+            result = await tools.consultar_certidoes(ctx, cnpj="00000000000191")
         assert "Banco do Brasil" in result
+        assert "NADA_CONSTA" in result
         assert "TCU" in result
-        assert "Nada consta" in result
+        assert "CNJ" in result
 
-
-# ---------------------------------------------------------------------------
-# calcular_debito_tcu
-# ---------------------------------------------------------------------------
-
-
-class TestCalcularDebitoTcu:
     @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = CalculoDebitoResultado(
-            data="22/03/2026",
-            saldo_debito=1000.0,
-            saldo_variacao_selic=577.38,
-            saldo_juros=0.0,
-            saldo_total=1577.38,
+    async def test_empty_certidoes(self) -> None:
+        mock_data = CertidaoConsolidada(
+            razaoSocial="Empresa X",
+            nomeFantasia="",
+            cnpj="11.111.111/0001-11",
+            certidoes=[],
+            seCnpjEncontradoNaBaseTcu=False,
         )
         ctx = _mock_ctx()
         with patch(
-            f"{CLIENT_MODULE}.calcular_debito",
+            f"{CLIENT_MODULE}.consultar_certidoes",
             new_callable=AsyncMock,
             return_value=mock_data,
         ):
-            result = await tools.calcular_debito_tcu("22/03/2026", "01/01/2020", 1000.0, ctx)
-        assert "R$ 1.000,00" in result
-        assert "R$ 577,38" in result
-        assert "R$ 1.577,38" in result
+            result = await tools.consultar_certidoes(ctx, cnpj="11111111000111")
+        assert "Nenhuma certidão" in result
 
 
-# ---------------------------------------------------------------------------
-# buscar_pedidos_congresso
-# ---------------------------------------------------------------------------
-
-
-class TestBuscarPedidosCongresso:
+class TestConsultarPedidosCongresso:
     @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = PedidoCongressoResultado(
-            items=[
-                PedidoCongresso(
-                    tipo="REQ",
-                    numero=4,
-                    autor="Dr. Hiran",
-                    processo_scn="004.808/2026-6",
-                    assunto="Requerimento de informações...",
-                ),
-            ],
-            has_next=False,
-        )
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            PedidoCongresso(
+                tipo="REQ",
+                numero=4,
+                data_aprovacao="2026-02-19T03:00:00Z",
+                assunto="Informações sobre obras ferroviárias",
+                autor="Dr. Hiran",
+                processo_scn="004.808/2026-6",
+                link_proposicao="https://senado.leg.br/...",
+            ),
+        ]
         ctx = _mock_ctx()
         with patch(
-            f"{CLIENT_MODULE}.buscar_pedidos_congresso",
+            f"{CLIENT_MODULE}.consultar_pedidos_congresso",
             new_callable=AsyncMock,
             return_value=mock_data,
         ):
-            result = await tools.buscar_pedidos_congresso(ctx)
+            result = await tools.consultar_pedidos_congresso(ctx)
+        assert "REQ" in result
         assert "Dr. Hiran" in result
         assert "004.808/2026-6" in result
 
     @pytest.mark.asyncio
-    async def test_empty_results(self) -> None:
-        mock_data = PedidoCongressoResultado(items=[])
+    async def test_empty(self) -> None:
         ctx = _mock_ctx()
         with patch(
-            f"{CLIENT_MODULE}.buscar_pedidos_congresso",
+            f"{CLIENT_MODULE}.consultar_pedidos_congresso",
             new_callable=AsyncMock,
-            return_value=mock_data,
+            return_value=[],
         ):
-            result = await tools.buscar_pedidos_congresso(ctx)
+            result = await tools.consultar_pedidos_congresso(ctx)
         assert "Nenhum pedido" in result
-
-
-# ---------------------------------------------------------------------------
-# buscar_contratos_tcu
-# ---------------------------------------------------------------------------
-
-
-class TestBuscarContratosTcu:
-    @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = [
-            TermoContratual(
-                tipo_contratacao="CONTRATACAO POR NOTA DE EMPENHO",
-                numero=3,
-                ano=2025,
-                nome_fornecedor="LABORATORIO RICHET",
-                objeto="Contratação de laboratório",
-                valor_atualizado=5271.82,
-                modalidade_licitacao="DISPENSA DE LICITACAO",
-                numero_processo="017.866/2025-1",
-            ),
-        ]
-        ctx = _mock_ctx()
-        with patch(
-            f"{CLIENT_MODULE}.buscar_contratos_tcu",
-            new_callable=AsyncMock,
-            return_value=mock_data,
-        ):
-            result = await tools.buscar_contratos_tcu(ctx)
-        assert "LABORATORIO RICHET" in result
-        assert "R$ 5.271,82" in result
-        assert "017.866/2025-1" in result
-
-    @pytest.mark.asyncio
-    async def test_empty_results(self) -> None:
-        ctx = _mock_ctx()
-        with patch(
-            f"{CLIENT_MODULE}.buscar_contratos_tcu",
-            new_callable=AsyncMock,
-            return_value=[],
-        ):
-            result = await tools.buscar_contratos_tcu(ctx)
-        assert "Nenhum contrato" in result
-
-
-# ---------------------------------------------------------------------------
-# consultar_cadirreg
-# ---------------------------------------------------------------------------
-
-
-class TestConsultarCadirreg:
-    @pytest.mark.asyncio
-    async def test_formats_results(self) -> None:
-        mock_data = [
-            PessoaCadirreg(
-                nome_responsavel="FULANO DE TAL",
-                cpf="12345678900",
-                num_processo="012345",
-                ano_processo="2020",
-                julgamento="Contas irregulares",
-                unidade_tecnica_processo="SECEX-MA",
-            ),
-        ]
-        ctx = _mock_ctx()
-        with patch(
-            f"{CLIENT_MODULE}.consultar_cadirreg",
-            new_callable=AsyncMock,
-            return_value=mock_data,
-        ):
-            result = await tools.consultar_cadirreg("12345678900", ctx)
-        assert "FULANO DE TAL" in result
-        assert "012345" in result
-        assert "SECEX-MA" in result
-
-    @pytest.mark.asyncio
-    async def test_not_found(self) -> None:
-        ctx = _mock_ctx()
-        with patch(
-            f"{CLIENT_MODULE}.consultar_cadirreg",
-            new_callable=AsyncMock,
-            return_value=[],
-        ):
-            result = await tools.consultar_cadirreg("00000000000", ctx)
-        assert "não consta" in result
