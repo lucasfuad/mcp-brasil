@@ -11,6 +11,7 @@ from mcp_brasil.data.saude.constants import (
     PROFISSIONAIS_URL,
     TIPOS_URL,
 )
+from mcp_brasil.exceptions import HttpClientError
 
 # ---------------------------------------------------------------------------
 # buscar_estabelecimentos
@@ -377,3 +378,60 @@ class TestParseEstabelecimentoDetalhe:
         assert result.codigo_cnes == "1234567"
         assert result.bairro == "Centro"
         assert result.latitude == -23.55
+
+
+# ---------------------------------------------------------------------------
+# Malformed API responses (type validation)
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedResponses:
+    """Test that client functions raise HttpClientError on unexpected response types."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_estabelecimentos_string_response(self) -> None:
+        respx.get(ESTABELECIMENTOS_URL).mock(
+            return_value=httpx.Response(200, json="Service Unavailable")
+        )
+        with pytest.raises(HttpClientError, match="expected list"):
+            await client.buscar_estabelecimentos()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_estabelecimentos_dict_response(self) -> None:
+        respx.get(ESTABELECIMENTOS_URL).mock(
+            return_value=httpx.Response(200, json={"error": "not found"})
+        )
+        with pytest.raises(HttpClientError, match="expected list"):
+            await client.buscar_estabelecimentos()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_leitos_string_response(self) -> None:
+        respx.get(LEITOS_URL).mock(return_value=httpx.Response(200, json="404 Not Found"))
+        with pytest.raises(HttpClientError, match="expected list"):
+            await client.consultar_leitos()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_profissionais_string_response(self) -> None:
+        respx.get(PROFISSIONAIS_URL).mock(return_value=httpx.Response(200, json="error"))
+        with pytest.raises(HttpClientError, match="expected list"):
+            await client.buscar_profissionais()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_tipos_string_response(self) -> None:
+        respx.get(TIPOS_URL).mock(return_value=httpx.Response(200, json="error"))
+        with pytest.raises(HttpClientError, match="expected list"):
+            await client.listar_tipos_estabelecimento()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_estabelecimento_por_cnes_string_response(self) -> None:
+        respx.get(f"{ESTABELECIMENTOS_URL}/1234567").mock(
+            return_value=httpx.Response(200, json="not found")
+        )
+        with pytest.raises(HttpClientError, match="expected dict"):
+            await client.buscar_estabelecimento_por_cnes("1234567")

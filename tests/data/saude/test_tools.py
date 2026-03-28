@@ -16,6 +16,7 @@ from mcp_brasil.data.saude.schemas import (
     Profissional,
     TipoEstabelecimento,
 )
+from mcp_brasil.exceptions import HttpClientError
 
 CLIENT_MODULE = "mcp_brasil.data.saude.client"
 
@@ -498,3 +499,121 @@ class TestCompararMunicipios:
             codigos_municipios=["1", "2", "3", "4", "5", "6"],
         )
         assert "Máximo de 5" in result
+
+
+# ---------------------------------------------------------------------------
+# HttpClientError handling
+# ---------------------------------------------------------------------------
+
+
+class TestApiErrorHandling:
+    """Test that tools return friendly messages when the API is unavailable."""
+
+    @pytest.mark.asyncio
+    async def test_buscar_estabelecimentos_api_error(self) -> None:
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_estabelecimentos",
+            new_callable=AsyncMock,
+            side_effect=HttpClientError("HTTP 404"),
+        ):
+            result = await tools.buscar_estabelecimentos(ctx)
+        assert "indisponível" in result
+
+    @pytest.mark.asyncio
+    async def test_consultar_leitos_api_error(self) -> None:
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.consultar_leitos",
+            new_callable=AsyncMock,
+            side_effect=HttpClientError("HTTP 404"),
+        ):
+            result = await tools.consultar_leitos(ctx)
+        assert "indisponível" in result
+
+    @pytest.mark.asyncio
+    async def test_buscar_estabelecimento_por_cnes_api_error(self) -> None:
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_estabelecimento_por_cnes",
+            new_callable=AsyncMock,
+            side_effect=HttpClientError("HTTP 404"),
+        ):
+            result = await tools.buscar_estabelecimento_por_cnes(ctx, cnes="1234567")
+        assert "indisponível" in result
+
+    @pytest.mark.asyncio
+    async def test_resumo_partial_failure(self) -> None:
+        """resumo_rede_municipal handles partial API failures gracefully."""
+        ctx = _mock_ctx()
+        mock_estab = [Estabelecimento(descricao_tipo="UBS")]
+        with (
+            patch(
+                f"{CLIENT_MODULE}.buscar_estabelecimentos",
+                new_callable=AsyncMock,
+                return_value=mock_estab,
+            ),
+            patch(
+                f"{CLIENT_MODULE}.consultar_leitos",
+                new_callable=AsyncMock,
+                side_effect=HttpClientError("leitos offline"),
+            ),
+            patch(
+                f"{CLIENT_MODULE}.buscar_profissionais",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = await tools.resumo_rede_municipal(ctx, codigo_municipio="355030")
+        assert "Resumo da rede" in result
+        assert "leitos indisponíveis" in result
+
+    @pytest.mark.asyncio
+    async def test_resumo_total_failure(self) -> None:
+        """resumo_rede_municipal returns error when all APIs fail."""
+        ctx = _mock_ctx()
+        with (
+            patch(
+                f"{CLIENT_MODULE}.buscar_estabelecimentos",
+                new_callable=AsyncMock,
+                side_effect=HttpClientError("offline"),
+            ),
+            patch(
+                f"{CLIENT_MODULE}.consultar_leitos",
+                new_callable=AsyncMock,
+                side_effect=HttpClientError("offline"),
+            ),
+            patch(
+                f"{CLIENT_MODULE}.buscar_profissionais",
+                new_callable=AsyncMock,
+                side_effect=HttpClientError("offline"),
+            ),
+        ):
+            result = await tools.resumo_rede_municipal(ctx, codigo_municipio="355030")
+        assert "indisponível" in result
+
+    @pytest.mark.asyncio
+    async def test_comparar_municipios_partial_failure(self) -> None:
+        """comparar_municipios handles partial failures per municipality."""
+        ctx = _mock_ctx()
+        ctx.report_progress = AsyncMock()
+        with (
+            patch(
+                f"{CLIENT_MODULE}.buscar_estabelecimentos",
+                new_callable=AsyncMock,
+                return_value=[Estabelecimento()],
+            ),
+            patch(
+                f"{CLIENT_MODULE}.consultar_leitos",
+                new_callable=AsyncMock,
+                side_effect=HttpClientError("offline"),
+            ),
+            patch(
+                f"{CLIENT_MODULE}.buscar_profissionais",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = await tools.comparar_municipios(ctx, codigos_municipios=["355030", "330455"])
+        assert "Comparação" in result
+        assert "indisponíveis" in result

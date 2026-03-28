@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from mcp_brasil._shared.http_client import http_get
+from mcp_brasil.exceptions import HttpClientError
 
 from .constants import (
     DEFAULT_LIMIT,
@@ -29,6 +30,28 @@ from .schemas import (
     Profissional,
     TipoEstabelecimento,
 )
+
+
+def _ensure_list(data: Any, url: str) -> list[dict[str, Any]]:
+    """Validate that API response is a list of dicts.
+
+    The DataSUS API sometimes returns a JSON string or dict on errors
+    instead of the expected list, causing 'str' has no attribute 'get'.
+    """
+    if isinstance(data, list):
+        return data
+    raise HttpClientError(
+        f"Unexpected response from {url}: expected list, got {type(data).__name__}"
+    )
+
+
+def _ensure_dict(data: Any, url: str) -> dict[str, Any]:
+    """Validate that API response is a dict."""
+    if isinstance(data, dict):
+        return data
+    raise HttpClientError(
+        f"Unexpected response from {url}: expected dict, got {type(data).__name__}"
+    )
 
 
 def _parse_estabelecimento(raw: dict[str, Any]) -> Estabelecimento:
@@ -107,7 +130,8 @@ async def buscar_estabelecimentos(
     if status is not None:
         params["status"] = status
 
-    data: list[dict[str, Any]] = await http_get(ESTABELECIMENTOS_URL, params=params)
+    raw = await http_get(ESTABELECIMENTOS_URL, params=params)
+    data = _ensure_list(raw, ESTABELECIMENTOS_URL)
     return [_parse_estabelecimento(item) for item in data]
 
 
@@ -137,7 +161,8 @@ async def buscar_profissionais(
     if cnes:
         params["cnes"] = cnes
 
-    data: list[dict[str, Any]] = await http_get(PROFISSIONAIS_URL, params=params)
+    raw = await http_get(PROFISSIONAIS_URL, params=params)
+    data = _ensure_list(raw, PROFISSIONAIS_URL)
     return [_parse_profissional(item) for item in data]
 
 
@@ -146,7 +171,8 @@ async def listar_tipos_estabelecimento() -> list[TipoEstabelecimento]:
 
     API: GET /tipodeestabelecimento
     """
-    data: list[dict[str, Any]] = await http_get(TIPOS_URL)
+    raw = await http_get(TIPOS_URL)
+    data = _ensure_list(raw, TIPOS_URL)
     return [_parse_tipo(item) for item in data]
 
 
@@ -176,7 +202,8 @@ async def consultar_leitos(
     if cnes:
         params["cnes"] = cnes
 
-    data: list[dict[str, Any]] = await http_get(LEITOS_URL, params=params)
+    raw = await http_get(LEITOS_URL, params=params)
+    data = _ensure_list(raw, LEITOS_URL)
     return [_parse_leito(item) for item in data]
 
 
@@ -212,9 +239,10 @@ async def buscar_estabelecimento_por_cnes(cnes: str) -> EstabelecimentoDetalhe |
         cnes: CNES code (7 digits).
     """
     url = f"{ESTABELECIMENTOS_URL}/{cnes}"
-    data: dict[str, Any] = await http_get(url)
-    if not data:
+    raw = await http_get(url)
+    if not raw:
         return None
+    data = _ensure_dict(raw, url)
     return _parse_estabelecimento_detalhe(data)
 
 
@@ -250,5 +278,6 @@ async def buscar_estabelecimentos_por_tipo(
     if codigo_uf:
         params["codigo_uf"] = codigo_uf
 
-    data: list[dict[str, Any]] = await http_get(ESTABELECIMENTOS_URL, params=params)
+    raw = await http_get(ESTABELECIMENTOS_URL, params=params)
+    data = _ensure_list(raw, ESTABELECIMENTOS_URL)
     return [_parse_estabelecimento(item) for item in data]
