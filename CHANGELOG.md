@@ -2,11 +2,16 @@
 
 Todas as mudanças notáveis do mcp-brasil estão documentadas neste arquivo.
 
-## [Unreleased]
+## [0.9.0] - 2026-04-03
+
+### Bug Fixes
+
+- **farmacia_popular:** Handle CNES API envelope and address fields
 
 ### Features
 
-- **camara:** Add `id_deputado_autor` filter to `buscar_proposicao`
+- **camara:** Support id_deputado_autor in buscar_proposicao (#4)
+- **datajud:** Add MPU tools for medidas protetivas de urgência
 
 ## [0.8.0] - 2026-03-29
 
