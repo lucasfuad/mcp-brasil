@@ -2,6 +2,12 @@
 
 Todas as mudanças notáveis do mcp-brasil estão documentadas neste arquivo.
 
+## [0.10.0] - 2026-04-09
+
+### Features
+
+- **transparencia:** Port missing endpoints and fix API parsers
+
 ## [0.9.0] - 2026-04-03
 
 ### Bug Fixes
