@@ -9,7 +9,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-326 tools · 80 resources · 62 prompts · 11 áreas temáticas
+363 tools · 87 resources · 62 prompts · 11 áreas temáticas
 
 Conecte AI agents (Claude, GPT, Copilot, etc.) a dados governamentais do Brasil — economia, legislação, transparência, judiciário, eleições, meio ambiente, saúde, segurança pública e mais.
 
@@ -23,10 +23,10 @@ Conecte AI agents (Claude, GPT, Copilot, etc.) a dados governamentais do Brasil 
 
 ## Features
 
-- **326 tools** em 41 features cobrindo 11 áreas — economia, legislativo, transparência, judiciário, eleitoral, ambiental, saúde, segurança pública, compras públicas, utilidades e mais
+- **363 tools** em 41 features cobrindo 11 áreas — economia, legislativo, transparência, judiciário, eleitoral, ambiental, saúde, segurança pública, compras públicas, utilidades e mais
 - **Cross-referencing** com `planejar_consulta` — cria planos de execução combinando múltiplas APIs (ex: gastos de um deputado + votações + proposições)
 - **Execução em lote** com `executar_lote` — dispara consultas em paralelo numa única chamada
-- **Smart discovery** — BM25 search transform filtra 326 tools para só mostrar as relevantes ao contexto
+- **Smart discovery** — BM25 search transform filtra 363 tools para só mostrar as relevantes ao contexto
 - **Auto-registry** — adicionar uma feature é criar uma pasta; zero configuração manual
 - **Async everywhere** — httpx async + Pydantic v2 + rate limiting com backoff
 
@@ -139,7 +139,7 @@ Conecte o server e faça perguntas em linguagem natural:
 
 | Feature | Fonte | Tools |
 |---------|-------|:-----:|
-| `transparencia` | Portal da Transparência — contratos, despesas, servidores, sanções | 18 |
+| `transparencia` | Portal da Transparência — contratos, despesas, servidores, sanções, imóveis funcionais, renúncias fiscais, órgãos, COVID-19 | 54 |
 | `tcu` | Tribunal de Contas da União — acórdãos, inidôneos, débitos, pautas | 9 |
 | `tce_sp` | TCE-SP — despesas e receitas de 645 municípios paulistas | 3 |
 | `tce_rj` | TCE-RJ — licitações, contratos, obras, penalidades, concessões | 7 |
@@ -246,7 +246,7 @@ META_ACCESS_TOKEN=seu-token
 |--------|-----------|
 | [Quick Start](docs/guide/quickstart.md) | Instalação e configuração em 2 minutos |
 | [Arquitetura](docs/concepts/architecture.md) | Como o projeto funciona por dentro |
-| [Catálogo de Features](docs/reference/features.md) | Todas as 41 features e 326 tools |
+| [Catálogo de Features](docs/reference/features.md) | Todas as 41 features e 363 tools |
 | [Smart Tools](docs/reference/smart-tools.md) | Meta-tools: planner, batch, discovery |
 | [Adicionando Features](docs/guide/adding-features.md) | Guia para contribuir com novas APIs |
 | [Configuração](docs/reference/configuration.md) | Variáveis de ambiente e opções |

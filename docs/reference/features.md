@@ -1,6 +1,6 @@
 # Catalogo de Features
 
-41 features · 326 tools · 80 resources · 62 prompts
+41 features · 363 tools · 87 resources · 62 prompts
 
 ---
 
@@ -109,30 +109,66 @@ Senadores, materias, votacoes, comissoes, agenda, liderancas.
 
 ## Transparencia / Fiscal
 
-### `transparencia` — Portal da Transparencia (18 tools)
+### `transparencia` — Portal da Transparencia (54 tools)
 
-Contratos federais, despesas, servidores, sancoes, bolsa familia, emendas, viagens, cartoes de pagamento.
+Contratos federais, despesas, servidores, sancoes, bolsa familia, emendas, viagens, cartoes de pagamento, imoveis funcionais, renuncias fiscais, orgaos, COVID-19, licitacoes, convenios, notas fiscais.
 
 | Tool | Descricao |
 |------|-----------|
-| `transparencia_buscar_contratos` | Contratos federais |
+| `transparencia_buscar_contratos` | Contratos federais por CPF/CNPJ |
+| `transparencia_buscar_contratos_geral` | Contratos por orgao/UG |
+| `transparencia_buscar_contrato_numero` | Contrato por numero |
+| `transparencia_detalhar_contrato` | Detalhes de um contrato |
+| `transparencia_buscar_termos_aditivos` | Termos aditivos de contrato |
+| `transparencia_buscar_itens_contratados` | Itens contratados |
 | `transparencia_consultar_despesas` | Despesas por funcao/UF/ano |
+| `transparencia_consultar_despesas_orgao` | Despesas por orgao |
+| `transparencia_consultar_despesas_funcional` | Despesas por classificacao funcional |
+| `transparencia_buscar_documentos_despesa` | Documentos de despesa |
+| `transparencia_buscar_itens_empenho` | Itens de empenho |
 | `transparencia_buscar_servidores` | Servidores publicos federais |
+| `transparencia_detalhar_servidor` | Detalhes de um servidor |
+| `transparencia_buscar_remuneracoes_servidores` | Remuneracoes |
+| `transparencia_buscar_servidores_por_orgao` | Servidores agregados por orgao |
+| `transparencia_listar_funcoes_cargos` | Funcoes e cargos de confianca |
 | `transparencia_buscar_licitacoes` | Processos licitatorios |
+| `transparencia_detalhar_licitacao` | Detalhe de licitacao |
+| `transparencia_buscar_licitacao_por_processo` | Licitacao por numero de processo |
+| `transparencia_buscar_participantes_licitacao` | Participantes do processo |
+| `transparencia_listar_modalidades_licitacao` | Modalidades disponiveis |
+| `transparencia_buscar_itens_licitados` | Itens licitados |
+| `transparencia_buscar_empenhos_licitacao` | Empenhos da licitacao |
+| `transparencia_buscar_contratos_licitacao` | Contratos relacionados |
+| `transparencia_buscar_unidades_gestoras` | UGs de licitacoes/contratos |
 | `transparencia_consultar_bolsa_familia` | Beneficiarios do Bolsa Familia |
+| `transparencia_consultar_beneficio_social` | Beneficios sociais gerais |
+| `transparencia_consultar_seguro_defeso` | Seguro-defeso (pescadores) |
+| `transparencia_consultar_garantia_safra` | Garantia-safra (agricultura familiar) |
+| `transparencia_consultar_peti` | PETI (erradicacao do trabalho infantil) |
 | `transparencia_buscar_sancoes` | Sancoes (CEIS/CNEP/CEPIM/CEAF) |
-| `transparencia_buscar_emendas` | Emendas parlamentares |
-| `transparencia_consultar_viagens` | Viagens a servico do governo |
-| `transparencia_buscar_convenios` | Convenios |
-| `transparencia_buscar_cartoes_pagamento` | Transacoes de cartoes de pagamento |
+| `transparencia_detalhar_sancao` | Detalhe de sancao por ID |
 | `transparencia_buscar_pep` | Pessoas politicamente expostas |
 | `transparencia_buscar_acordos_leniencia` | Acordos de leniencia |
+| `transparencia_buscar_emendas` | Emendas parlamentares |
+| `transparencia_buscar_documentos_emenda` | Documentos de emenda |
+| `transparencia_consultar_viagens` | Viagens a servico do governo |
+| `transparencia_buscar_viagens_orgao` | Viagens por orgao |
+| `transparencia_detalhar_viagem` | Detalhe de viagem |
+| `transparencia_buscar_convenios` | Convenios |
+| `transparencia_detalhar_convenio` | Detalhe de convenio |
+| `transparencia_buscar_convenio_numero` | Convenio por numero |
+| `transparencia_buscar_cartoes_pagamento` | Transacoes de cartoes |
 | `transparencia_buscar_notas_fiscais` | Notas fiscais |
-| `transparencia_consultar_beneficio_social` | Beneficios sociais |
+| `transparencia_buscar_nota_fiscal_chave` | NF por chave de acesso |
+| `transparencia_buscar_imoveis_funcionais` | Imoveis funcionais da Uniao |
+| `transparencia_buscar_permissionarios_imoveis` | Permissionarios/ocupantes |
+| `transparencia_buscar_renuncias_fiscais` | Renuncias de receita fiscal |
+| `transparencia_buscar_empresas_beneficios_fiscais` | Empresas com beneficios fiscais |
+| `transparencia_listar_orgaos` | Orgaos SIAPE/SIAFI |
+| `transparencia_consultar_coronavirus_transferencias` | Transferencias COVID-19 |
+| `transparencia_consultar_coronavirus_despesas` | Despesas COVID-19 |
 | `transparencia_consultar_cpf` | Consulta CPF |
 | `transparencia_consultar_cnpj` | Consulta CNPJ |
-| `transparencia_detalhar_contrato` | Detalhes de um contrato |
-| `transparencia_detalhar_servidor` | Detalhes de um servidor |
 
 **Chave:** Opcional — [cadastro gratuito](http://portaldatransparencia.gov.br/api-de-dados/cadastrar-email)
 
