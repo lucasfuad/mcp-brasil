@@ -12,7 +12,7 @@ Tudo é "ofício" agora (padrão ofício).
 
 from __future__ import annotations
 
-from fastmcp.prompts.prompt import Message
+from fastmcp.prompts import Message
 
 
 def redator_oficio(
