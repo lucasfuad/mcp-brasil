@@ -68,6 +68,11 @@ dev = [
     "diagrams>=0.24",
     "openpyxl>=3.1.5",
 ]
+foundry = [
+    "azure-ai-projects>=2.0.0",
+    "azure-identity>=1.17.0",
+    "openai>=1.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]
