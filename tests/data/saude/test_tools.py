@@ -10,9 +10,14 @@ import pytest
 
 from mcp_brasil.data.saude import tools
 from mcp_brasil.data.saude.schemas import (
+    AlertaDengue,
+    AlertaGripe,
+    BaseDATASUS,
+    DoencaNotificavel,
     Estabelecimento,
     EstabelecimentoDetalhe,
     Leito,
+    MunicipioGeocode,
     TipoEstabelecimento,
 )
 from mcp_brasil.exceptions import HttpClientError
@@ -559,3 +564,258 @@ class TestApiErrorHandling:
             result = await tools.comparar_municipios(ctx, codigos_municipios=["355030", "330455"])
         assert "Comparação" in result
         assert "indisponíveis" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# buscar_alertas_dengue
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarAlertasDengue:
+    @pytest.mark.asyncio
+    async def test_formats_table(self) -> None:
+        mock_geocode = [MunicipioGeocode(nome="Fortaleza", uf="CE", geocodigo="2304400")]
+        mock_alertas = [
+            AlertaDengue(
+                semana_epidemiologica=10,
+                data_inicio_se="2024-03-03",
+                casos_estimados=150.5,
+                casos_notificados=120,
+                nivel=2,
+                nivel_descricao="Amarelo",
+                incidencia_100k=5.6,
+                rt=1.2,
+            ),
+        ]
+        ctx = _mock_ctx()
+        with (
+            patch(
+                f"{CLIENT_MODULE}.buscar_municipio_geocodigo",
+                return_value=mock_geocode,
+            ),
+            patch(
+                f"{CLIENT_MODULE}.buscar_alertas_dengue",
+                new_callable=AsyncMock,
+                return_value=mock_alertas,
+            ),
+        ):
+            result = await tools.buscar_alertas_dengue(ctx, municipio="Fortaleza")
+        assert "Fortaleza/CE" in result
+        assert "Amarelo" in result
+        assert "120" in result
+
+    @pytest.mark.asyncio
+    async def test_invalid_disease(self) -> None:
+        ctx = _mock_ctx()
+        result = await tools.buscar_alertas_dengue(ctx, municipio="São Paulo", doenca="gripe")
+        assert "não suportada" in result
+
+    @pytest.mark.asyncio
+    async def test_municipality_not_found(self) -> None:
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.buscar_municipio_geocodigo", return_value=[]):
+            result = await tools.buscar_alertas_dengue(ctx, municipio="CidadeInexistente")
+        assert "não encontrado" in result
+
+    @pytest.mark.asyncio
+    async def test_empty_results(self) -> None:
+        mock_geocode = [MunicipioGeocode(nome="Fortaleza", uf="CE", geocodigo="2304400")]
+        ctx = _mock_ctx()
+        with (
+            patch(
+                f"{CLIENT_MODULE}.buscar_municipio_geocodigo",
+                return_value=mock_geocode,
+            ),
+            patch(
+                f"{CLIENT_MODULE}.buscar_alertas_dengue",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = await tools.buscar_alertas_dengue(ctx, municipio="Fortaleza")
+        assert "Nenhum alerta" in result
+
+    @pytest.mark.asyncio
+    async def test_api_error(self) -> None:
+        mock_geocode = [MunicipioGeocode(nome="Fortaleza", uf="CE", geocodigo="2304400")]
+        ctx = _mock_ctx()
+        with (
+            patch(
+                f"{CLIENT_MODULE}.buscar_municipio_geocodigo",
+                return_value=mock_geocode,
+            ),
+            patch(
+                f"{CLIENT_MODULE}.buscar_alertas_dengue",
+                new_callable=AsyncMock,
+                side_effect=HttpClientError("timeout"),
+            ),
+        ):
+            result = await tools.buscar_alertas_dengue(ctx, municipio="Fortaleza")
+        assert "indisponível" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# buscar_situacao_gripe
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarSituacaoGripe:
+    @pytest.mark.asyncio
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            AlertaGripe(
+                uf="SP",
+                semana_epidemiologica=10,
+                situacao="Atividade alta",
+                nivel="alto",
+                casos_estimados=500.0,
+                casos_notificados=350,
+            ),
+            AlertaGripe(
+                uf="RJ",
+                semana_epidemiologica=10,
+                situacao="Atividade baixa",
+                nivel="baixo",
+                casos_estimados=100.0,
+                casos_notificados=80,
+            ),
+        ]
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_situacao_gripe",
+            new_callable=AsyncMock,
+            return_value=mock_data,
+        ):
+            result = await tools.buscar_situacao_gripe(ctx)
+        assert "SP" in result
+        assert "RJ" in result
+        assert "2 UFs" in result
+
+    @pytest.mark.asyncio
+    async def test_empty(self) -> None:
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_situacao_gripe",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await tools.buscar_situacao_gripe(ctx)
+        assert "Nenhum dado" in result
+
+    @pytest.mark.asyncio
+    async def test_api_error(self) -> None:
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_situacao_gripe",
+            new_callable=AsyncMock,
+            side_effect=HttpClientError("offline"),
+        ):
+            result = await tools.buscar_situacao_gripe(ctx)
+        assert "indisponível" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_by_uf(self) -> None:
+        """Should keep only latest entry per UF."""
+        mock_data = [
+            AlertaGripe(uf="SP", semana_epidemiologica=9, situacao="Semana 9"),
+            AlertaGripe(uf="SP", semana_epidemiologica=10, situacao="Semana 10"),
+            AlertaGripe(uf="RJ", semana_epidemiologica=10, situacao="Semana 10 RJ"),
+        ]
+        ctx = _mock_ctx()
+        with patch(
+            f"{CLIENT_MODULE}.buscar_situacao_gripe",
+            new_callable=AsyncMock,
+            return_value=mock_data,
+        ):
+            result = await tools.buscar_situacao_gripe(ctx)
+        assert "2 UFs" in result
+
+
+# ---------------------------------------------------------------------------
+# listar_bases_datasus
+# ---------------------------------------------------------------------------
+
+
+class TestListarBasesDatasus:
+    @pytest.mark.asyncio
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            BaseDATASUS(
+                sigla="SIM",
+                nome="Sistema de Informações sobre Mortalidade",
+                descricao="Registros de óbitos",
+                cobertura="1979-presente",
+                dimensoes="Causa, município",
+            ),
+        ]
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.listar_bases_datasus", return_value=mock_data):
+            result = await tools.listar_bases_datasus(ctx)
+        assert "SIM" in result
+        assert "1 bases" in result
+
+
+# ---------------------------------------------------------------------------
+# listar_doencas_notificaveis
+# ---------------------------------------------------------------------------
+
+
+class TestListarDoencasNotificaveis:
+    @pytest.mark.asyncio
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            DoencaNotificavel(codigo="DENG", nome="Dengue", categoria="Arbovirose"),
+            DoencaNotificavel(codigo="CHIK", nome="Chikungunya", categoria="Arbovirose"),
+        ]
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.listar_doencas_notificaveis", return_value=mock_data):
+            result = await tools.listar_doencas_notificaveis(ctx, categoria="Arbovirose")
+        assert "Dengue" in result
+        assert "Chikungunya" in result
+        assert "Arbovirose" in result
+        assert "2 doenças" in result
+
+    @pytest.mark.asyncio
+    async def test_empty(self) -> None:
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.listar_doencas_notificaveis", return_value=[]):
+            result = await tools.listar_doencas_notificaveis(ctx, categoria="Inexistente")
+        assert "Nenhuma doença" in result
+
+
+# ---------------------------------------------------------------------------
+# buscar_municipio_geocodigo
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarMunicipioGeocodigo:
+    @pytest.mark.asyncio
+    async def test_formats_table(self) -> None:
+        mock_data = [
+            MunicipioGeocode(nome="São Paulo", uf="SP", geocodigo="3550308"),
+        ]
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.buscar_municipio_geocodigo", return_value=mock_data):
+            result = await tools.buscar_municipio_geocodigo(ctx, nome="São Paulo")
+        assert "São Paulo" in result
+        assert "3550308" in result
+        assert "1 resultados" in result
+
+    @pytest.mark.asyncio
+    async def test_empty(self) -> None:
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.buscar_municipio_geocodigo", return_value=[]):
+            result = await tools.buscar_municipio_geocodigo(ctx, nome="XYZ123")
+        assert "Nenhum município" in result
+
+    @pytest.mark.asyncio
+    async def test_truncates_at_20(self) -> None:
+        mock_data = [
+            MunicipioGeocode(nome=f"Cidade {i}", uf="SP", geocodigo=str(3500000 + i))
+            for i in range(25)
+        ]
+        ctx = _mock_ctx()
+        with patch(f"{CLIENT_MODULE}.buscar_municipio_geocodigo", return_value=mock_data):
+            result = await tools.buscar_municipio_geocodigo(ctx, nome="Cidade")
+        assert "25 resultados" in result
+        assert "exibindo 20" in result

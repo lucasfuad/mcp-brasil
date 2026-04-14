@@ -43,3 +43,17 @@ _UFS_CNES = [
 def codigos_uf_cnes() -> str:
     """Códigos IBGE de UF usados para filtrar dados no CNES/DataSUS."""
     return json.dumps(_UFS_CNES, ensure_ascii=False)
+
+
+def bases_datasus() -> str:
+    """Catálogo das principais bases de dados do DATASUS."""
+    from .constants import BASES_DATASUS
+
+    return json.dumps(BASES_DATASUS, ensure_ascii=False)
+
+
+def doencas_sinan() -> str:
+    """Lista de doenças de notificação compulsória do SINAN."""
+    from .constants import DOENCAS_SINAN
+
+    return json.dumps(DOENCAS_SINAN, ensure_ascii=False)

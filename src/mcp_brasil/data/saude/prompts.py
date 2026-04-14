@@ -33,3 +33,33 @@ def analise_rede_saude(codigo_municipio: str) -> str:
         "- Capacidade de leitos (existentes vs SUS)\n"
         "- Avaliação geral da cobertura de saúde no município"
     )
+
+
+def analise_epidemiologica(doenca: str, municipio: str) -> str:
+    """Gera uma análise epidemiológica de arbovirose em um município.
+
+    Cria um template de análise que orienta o LLM a consultar dados de
+    alertas de dengue/chikungunya/zika e cruzar com dados do SINAN.
+
+    Args:
+        doenca: Doença a analisar ("dengue", "chikungunya" ou "zika").
+        municipio: Nome do município (ex: "Fortaleza").
+    """
+    return (
+        f"Faça uma análise epidemiológica de {doenca} no município de {municipio}.\n\n"
+        "Passos:\n"
+        f"1. Use buscar_municipio_geocodigo(nome='{municipio}') para obter o geocódigo IBGE\n"
+        f"2. Use buscar_alertas_dengue(municipio='{municipio}', doenca='{doenca}') "
+        "para obter os alertas semanais do InfoDengue\n"
+        "3. Use listar_doencas_notificaveis(categoria='Arbovirose') para contexto sobre "
+        "doenças notificáveis relacionadas\n"
+        "4. Use buscar_situacao_gripe() para verificar se há co-circulação de "
+        "vírus respiratórios\n\n"
+        "Apresente:\n"
+        "- Evolução semanal do nível de alerta (Verde/Amarelo/Laranja/Vermelho)\n"
+        "- Tendência de casos estimados e notificados\n"
+        "- Número reprodutivo (Rt) — acima de 1 indica transmissão em expansão\n"
+        "- Incidência por 100 mil habitantes\n"
+        "- Comparação com limiares epidêmicos\n"
+        "- Recomendações baseadas no nível de alerta atual"
+    )

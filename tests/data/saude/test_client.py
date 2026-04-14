@@ -1,5 +1,7 @@
 """Tests for the Saúde HTTP client."""
 
+from unittest.mock import patch
+
 import httpx
 import pytest
 import respx
@@ -7,6 +9,8 @@ import respx
 from mcp_brasil.data.saude import client
 from mcp_brasil.data.saude.constants import (
     ESTABELECIMENTOS_URL,
+    INFODENGUE_API_BASE,
+    INFOGRIPE_ALERTA_URL,
     LEITOS_URL,
     TIPOS_URL,
 )
@@ -368,3 +372,288 @@ class TestMalformedResponses:
         )
         with pytest.raises(HttpClientError, match="expected dict"):
             await client.buscar_estabelecimento_por_cnes("1234567")
+
+
+# ---------------------------------------------------------------------------
+# buscar_municipio_geocodigo (in-memory)
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarMunicipioGeocodigo:
+    def test_finds_by_name(self) -> None:
+        mock_data = [
+            {"nome": "São Paulo", "uf": "SP", "geocodigo": "3550308"},
+            {"nome": "São Pedro", "uf": "SP", "geocodigo": "3550407"},
+            {"nome": "Rio de Janeiro", "uf": "RJ", "geocodigo": "3304557"},
+        ]
+        with patch.object(client, "_load_geocode_data", return_value=mock_data):
+            result = client.buscar_municipio_geocodigo("São")
+        assert len(result) == 2
+        assert result[0].nome == "São Paulo"
+        assert result[1].nome == "São Pedro"
+
+    def test_filters_by_uf(self) -> None:
+        mock_data = [
+            {"nome": "Campinas", "uf": "SP", "geocodigo": "3509502"},
+            {"nome": "Campinas do Sul", "uf": "RS", "geocodigo": "4303673"},
+        ]
+        with patch.object(client, "_load_geocode_data", return_value=mock_data):
+            result = client.buscar_municipio_geocodigo("Campinas", uf="SP")
+        assert len(result) == 1
+        assert result[0].uf == "SP"
+
+    def test_accent_insensitive(self) -> None:
+        mock_data = [
+            {"nome": "Maricá", "uf": "RJ", "geocodigo": "3302700"},
+        ]
+        with patch.object(client, "_load_geocode_data", return_value=mock_data):
+            result = client.buscar_municipio_geocodigo("marica")
+        assert len(result) == 1
+        assert result[0].nome == "Maricá"
+
+    def test_not_found(self) -> None:
+        mock_data = [
+            {"nome": "São Paulo", "uf": "SP", "geocodigo": "3550308"},
+        ]
+        with patch.object(client, "_load_geocode_data", return_value=mock_data):
+            result = client.buscar_municipio_geocodigo("XYZ123")
+        assert result == []
+
+    def test_exact_match_first(self) -> None:
+        """Exact name matches should come before partial matches."""
+        mock_data = [
+            {"nome": "Cruzeiro da Fortaleza", "uf": "MG", "geocodigo": "3120706"},
+            {"nome": "Fortaleza", "uf": "CE", "geocodigo": "2304400"},
+            {"nome": "Fortaleza de Minas", "uf": "MG", "geocodigo": "3126307"},
+        ]
+        with patch.object(client, "_load_geocode_data", return_value=mock_data):
+            result = client.buscar_municipio_geocodigo("Fortaleza")
+        assert len(result) == 3
+        assert result[0].nome == "Fortaleza"
+        assert result[0].geocodigo == "2304400"
+
+
+# ---------------------------------------------------------------------------
+# buscar_alertas_dengue
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarAlertasDengue:
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_returns_parsed_alerts(self) -> None:
+        respx.get(INFODENGUE_API_BASE).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "SE": 202410,
+                        "data_iniSE": "2024-03-03",
+                        "casos_est": 150.5,
+                        "casos": 120,
+                        "nivel": 2,
+                        "p_inc100k": 5.6,
+                        "Rt": 1.2,
+                        "pop": 2700000.0,
+                        "receptession_level": 0,
+                        "transmission_evidence": 1,
+                    }
+                ],
+            )
+        )
+        result = await client.buscar_alertas_dengue(
+            geocodigo="2304400",
+            doenca="dengue",
+            ew_start=10,
+            ew_end=10,
+            ey_start=2024,
+            ey_end=2024,
+        )
+        assert len(result) == 1
+        assert result[0].semana_epidemiologica == 202410
+        assert result[0].casos_estimados == 150.5
+        assert result[0].casos_notificados == 120
+        assert result[0].nivel == 2
+        assert result[0].nivel_descricao == "Amarelo"
+        assert result[0].rt == 1.2
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_empty_response(self) -> None:
+        respx.get(INFODENGUE_API_BASE).mock(return_value=httpx.Response(200, json=[]))
+        result = await client.buscar_alertas_dengue(geocodigo="2304400")
+        assert result == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_handles_timestamp_data_iniSE(self) -> None:
+        """API returns data_iniSE as timestamp in ms — should convert to date string."""
+        respx.get(INFODENGUE_API_BASE).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "SE": 202510,
+                        "data_iniSE": 1740873600000,  # 2025-03-02 UTC
+                        "casos_est": 10.0,
+                        "casos": 5,
+                        "nivel": 1,
+                    }
+                ],
+            )
+        )
+        result = await client.buscar_alertas_dengue(geocodigo="2304400")
+        assert len(result) == 1
+        assert result[0].data_inicio_se == "2025-03-02"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_non_list_response(self) -> None:
+        respx.get(INFODENGUE_API_BASE).mock(
+            return_value=httpx.Response(200, json={"error": "not found"})
+        )
+        result = await client.buscar_alertas_dengue(geocodigo="0000000")
+        assert result == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_sends_query_params(self) -> None:
+        route = respx.get(INFODENGUE_API_BASE).mock(return_value=httpx.Response(200, json=[]))
+        await client.buscar_alertas_dengue(
+            geocodigo="2304400",
+            doenca="chikungunya",
+            ew_start=5,
+            ew_end=20,
+            ey_start=2024,
+            ey_end=2024,
+        )
+        req_url = str(route.calls[0].request.url)
+        assert "geocode=2304400" in req_url
+        assert "disease=chikungunya" in req_url
+        assert "ew_start=5" in req_url
+        assert "ew_end=20" in req_url
+        assert "ey_start=2024" in req_url
+        assert "ey_end=2024" in req_url
+        assert "format=json" in req_url
+
+
+# ---------------------------------------------------------------------------
+# buscar_situacao_gripe
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarSituacaoGripe:
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_returns_parsed_csv(self) -> None:
+        csv_content = (
+            "UF,epiweek,epiyear,situation_name,level,estimated_cases,notified_cases,"
+            "ci_lower,ci_upper\n"
+            "SP,10,2024,Atividade alta,alto,500.0,350,400.0,600.0\n"
+            "RJ,10,2024,Atividade baixa,baixo,100.0,80,50.0,150.0\n"
+        )
+        respx.get(INFOGRIPE_ALERTA_URL).mock(return_value=httpx.Response(200, text=csv_content))
+        result = await client.buscar_situacao_gripe()
+        assert len(result) == 2
+        assert result[0].uf == "SP"
+        assert result[0].semana_epidemiologica == 10
+        assert result[0].casos_estimados == 500.0
+        assert result[1].uf == "RJ"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_empty_csv(self) -> None:
+        csv_content = "UF,epiweek,epiyear,situation_name,level\n"
+        respx.get(INFOGRIPE_ALERTA_URL).mock(return_value=httpx.Response(200, text=csv_content))
+        result = await client.buscar_situacao_gripe()
+        assert result == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_http_error_raises(self) -> None:
+        respx.get(INFOGRIPE_ALERTA_URL).mock(
+            return_value=httpx.Response(500, text="Internal Server Error")
+        )
+        with pytest.raises(HttpClientError, match="InfoGripe"):
+            await client.buscar_situacao_gripe()
+
+
+# ---------------------------------------------------------------------------
+# listar_bases_datasus (in-memory)
+# ---------------------------------------------------------------------------
+
+
+class TestListarBasesDatasus:
+    def test_returns_all_bases(self) -> None:
+        result = client.listar_bases_datasus()
+        assert len(result) == 9
+        siglas = {b.sigla for b in result}
+        assert "SIM" in siglas
+        assert "SINAN" in siglas
+        assert "CNES" in siglas
+
+    def test_returns_base_datasus_models(self) -> None:
+        result = client.listar_bases_datasus()
+        for base in result:
+            assert base.sigla
+            assert base.nome
+            assert base.descricao
+
+
+# ---------------------------------------------------------------------------
+# listar_doencas_notificaveis (in-memory)
+# ---------------------------------------------------------------------------
+
+
+class TestListarDoencasNotificaveis:
+    def test_returns_all_diseases(self) -> None:
+        result = client.listar_doencas_notificaveis()
+        assert len(result) == 47
+
+    def test_filters_by_category(self) -> None:
+        result = client.listar_doencas_notificaveis(categoria="Arbovirose")
+        assert len(result) >= 3
+        for d in result:
+            assert d.categoria == "Arbovirose"
+
+    def test_filter_accent_insensitive(self) -> None:
+        result = client.listar_doencas_notificaveis(categoria="Respiratoria")
+        assert len(result) > 0
+        for d in result:
+            assert "Respiratória" in d.categoria
+
+    def test_empty_category(self) -> None:
+        result = client.listar_doencas_notificaveis(categoria="CategoriaInexistente")
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Normalize helper
+# ---------------------------------------------------------------------------
+
+
+class TestNormalize:
+    def test_removes_accents(self) -> None:
+        assert client._normalize("São Paulo") == "sao paulo"
+        assert client._normalize("Maricá") == "marica"
+
+    def test_lowercase(self) -> None:
+        assert client._normalize("FORTALEZA") == "fortaleza"
+
+
+# ---------------------------------------------------------------------------
+# Safe parse helpers
+# ---------------------------------------------------------------------------
+
+
+class TestSafeParsers:
+    def test_safe_int(self) -> None:
+        assert client._safe_int("42") == 42
+        assert client._safe_int("42.7") == 42
+        assert client._safe_int(None) is None
+        assert client._safe_int("abc") is None
+
+    def test_safe_float(self) -> None:
+        assert client._safe_float("3.14") == 3.14
+        assert client._safe_float(None) is None
+        assert client._safe_float("abc") is None

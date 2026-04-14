@@ -9,9 +9,14 @@ import pytest
 from fastmcp import Client
 
 from mcp_brasil.data.saude.schemas import (
+    AlertaDengue,
+    AlertaGripe,
+    BaseDATASUS,
+    DoencaNotificavel,
     Estabelecimento,
     EstabelecimentoDetalhe,
     Leito,
+    MunicipioGeocode,
     TipoEstabelecimento,
 )
 from mcp_brasil.data.saude.server import mcp
@@ -21,7 +26,7 @@ CLIENT_MODULE = "mcp_brasil.data.saude.client"
 
 class TestToolsRegistered:
     @pytest.mark.asyncio
-    async def test_all_10_tools_registered(self) -> None:
+    async def test_all_15_tools_registered(self) -> None:
         async with Client(mcp) as c:
             tool_list = await c.list_tools()
             names = {t.name for t in tool_list}
@@ -36,6 +41,11 @@ class TestToolsRegistered:
                 "buscar_por_coordenadas",
                 "resumo_rede_municipal",
                 "comparar_municipios",
+                "buscar_alertas_dengue",
+                "buscar_situacao_gripe",
+                "listar_bases_datasus",
+                "listar_doencas_notificaveis",
+                "buscar_municipio_geocodigo",
             }
             assert expected.issubset(names), f"Missing: {expected - names}"
 
@@ -49,20 +59,23 @@ class TestToolsRegistered:
 
 class TestResourcesRegistered:
     @pytest.mark.asyncio
-    async def test_resource_registered(self) -> None:
+    async def test_all_3_resources_registered(self) -> None:
         async with Client(mcp) as c:
             resources = await c.list_resources()
             uris = {str(r.uri) for r in resources}
             assert "data://codigos-uf" in uris
+            assert "data://bases-datasus" in uris
+            assert "data://doencas-sinan" in uris
 
 
 class TestPromptsRegistered:
     @pytest.mark.asyncio
-    async def test_prompt_registered(self) -> None:
+    async def test_all_2_prompts_registered(self) -> None:
         async with Client(mcp) as c:
             prompts = await c.list_prompts()
             names = {p.name for p in prompts}
             assert "analise_rede_saude" in names
+            assert "analise_epidemiologica" in names
 
 
 class TestToolExecution:
@@ -238,3 +251,86 @@ class TestToolExecution:
                 )
                 assert "Comparação" in result.data
                 assert "355030" in result.data
+
+    @pytest.mark.asyncio
+    async def test_buscar_alertas_dengue_e2e(self) -> None:
+        mock_geocode = [MunicipioGeocode(nome="Fortaleza", uf="CE", geocodigo="2304400")]
+        mock_alertas = [
+            AlertaDengue(
+                semana_epidemiologica=10,
+                data_inicio_se="2024-03-03",
+                nivel=2,
+                nivel_descricao="Amarelo",
+                casos_estimados=150.5,
+                casos_notificados=120,
+            ),
+        ]
+        with (
+            patch(f"{CLIENT_MODULE}.buscar_municipio_geocodigo", return_value=mock_geocode),
+            patch(
+                f"{CLIENT_MODULE}.buscar_alertas_dengue",
+                new_callable=AsyncMock,
+                return_value=mock_alertas,
+            ),
+        ):
+            async with Client(mcp) as c:
+                result = await c.call_tool(
+                    "buscar_alertas_dengue",
+                    {"municipio": "Fortaleza"},
+                )
+                assert "Fortaleza/CE" in result.data
+                assert "Amarelo" in result.data
+
+    @pytest.mark.asyncio
+    async def test_buscar_situacao_gripe_e2e(self) -> None:
+        mock_data = [
+            AlertaGripe(uf="SP", semana_epidemiologica=10, situacao="Alta", nivel="alto"),
+        ]
+        with patch(
+            f"{CLIENT_MODULE}.buscar_situacao_gripe",
+            new_callable=AsyncMock,
+            return_value=mock_data,
+        ):
+            async with Client(mcp) as c:
+                result = await c.call_tool("buscar_situacao_gripe", {})
+                assert "SP" in result.data
+
+    @pytest.mark.asyncio
+    async def test_listar_bases_datasus_e2e(self) -> None:
+        mock_data = [
+            BaseDATASUS(
+                sigla="SIM",
+                nome="Mortalidade",
+                descricao="Óbitos",
+                cobertura="1979-presente",
+                dimensoes="Causa",
+            ),
+        ]
+        with patch(f"{CLIENT_MODULE}.listar_bases_datasus", return_value=mock_data):
+            async with Client(mcp) as c:
+                result = await c.call_tool("listar_bases_datasus", {})
+                assert "SIM" in result.data
+
+    @pytest.mark.asyncio
+    async def test_listar_doencas_notificaveis_e2e(self) -> None:
+        mock_data = [
+            DoencaNotificavel(codigo="DENG", nome="Dengue", categoria="Arbovirose"),
+        ]
+        with patch(f"{CLIENT_MODULE}.listar_doencas_notificaveis", return_value=mock_data):
+            async with Client(mcp) as c:
+                result = await c.call_tool("listar_doencas_notificaveis", {})
+                assert "Dengue" in result.data
+
+    @pytest.mark.asyncio
+    async def test_buscar_municipio_geocodigo_e2e(self) -> None:
+        mock_data = [
+            MunicipioGeocode(nome="São Paulo", uf="SP", geocodigo="3550308"),
+        ]
+        with patch(f"{CLIENT_MODULE}.buscar_municipio_geocodigo", return_value=mock_data):
+            async with Client(mcp) as c:
+                result = await c.call_tool(
+                    "buscar_municipio_geocodigo",
+                    {"nome": "São Paulo"},
+                )
+                assert "São Paulo" in result.data
+                assert "3550308" in result.data

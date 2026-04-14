@@ -7,6 +7,7 @@ Rules (ADR-001):
 
 from __future__ import annotations
 
+import datetime
 import logging
 import math
 
@@ -16,7 +17,7 @@ from mcp_brasil._shared.formatting import format_number_br, markdown_table
 from mcp_brasil.exceptions import HttpClientError
 
 from . import client
-from .constants import TIPOS_URGENCIA
+from .constants import DOENCAS_INFODENGUE, TIPOS_URGENCIA
 from .schemas import Estabelecimento, Leito, ResumoRedeMunicipal
 
 logger = logging.getLogger(__name__)
@@ -587,3 +588,253 @@ async def comparar_municipios(
     if avisos:
         result += "\n\n**Avisos:**\n" + "\n".join(f"- {a}" for a in avisos)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Epidemiologia — novas tools
+# ---------------------------------------------------------------------------
+
+_API_INFODENGUE_INDISPONIVEL = (
+    "A API do InfoDengue está indisponível ou retornou uma resposta inesperada. "
+    "Tente novamente mais tarde."
+)
+
+_API_INFOGRIPE_INDISPONIVEL = (
+    "A fonte de dados do InfoGripe (Fiocruz) está indisponível. Tente novamente mais tarde."
+)
+
+
+async def buscar_alertas_dengue(
+    ctx: Context,
+    municipio: str,
+    doenca: str = "dengue",
+    semana_inicio: int = 1,
+    semana_fim: int = 52,
+    ano_inicio: int | None = None,
+    ano_fim: int | None = None,
+) -> str:
+    """Busca alertas epidemiológicos de dengue, chikungunya ou zika (InfoDengue).
+
+    Consulta a API do InfoDengue (Fiocruz/FGV) para obter alertas semanais de
+    arboviroses em um município. Retorna nível de alerta, casos estimados,
+    incidência por 100 mil habitantes e número reprodutivo (Rt).
+
+    Args:
+        municipio: Nome do município (ex: "Rio de Janeiro", "Fortaleza").
+        doenca: Doença a consultar: "dengue", "chikungunya" ou "zika" (padrão: "dengue").
+        semana_inicio: Semana epidemiológica inicial (1-52, padrão: 1).
+        semana_fim: Semana epidemiológica final (1-52, padrão: 52).
+        ano_inicio: Ano epidemiológico inicial (ex: 2024). Se omitido, usa o ano atual.
+        ano_fim: Ano epidemiológico final. Se omitido, usa o ano atual.
+
+    Returns:
+        Tabela com alertas semanais de arbovirose.
+    """
+    doenca_lower = doenca.lower()
+    if doenca_lower not in DOENCAS_INFODENGUE:
+        nomes = ", ".join(DOENCAS_INFODENGUE.keys())
+        return f"Doença '{doenca}' não suportada. Use uma de: {nomes}"
+
+    # Resolve nome do município para geocódigo
+    matches = client.buscar_municipio_geocodigo(municipio)
+    if not matches:
+        return (
+            f"Município '{municipio}' não encontrado. "
+            "Verifique a grafia ou use buscar_municipio_geocodigo para pesquisar."
+        )
+
+    geocodigo = matches[0].geocodigo
+    nome_mun = f"{matches[0].nome}/{matches[0].uf}"
+
+    if len(matches) > 1:
+        lista_nomes = [f"{m.nome}/{m.uf}" for m in matches[:5]]
+        await ctx.info(f"Múltiplos municípios encontrados. Usando o primeiro: {lista_nomes}")
+
+    doenca_nome = DOENCAS_INFODENGUE[doenca_lower]
+    await ctx.info(f"Buscando alertas de {doenca_nome} em {nome_mun}...")
+
+    current_year = datetime.datetime.now(datetime.timezone.utc).year
+    ey_start = ano_inicio or current_year
+    ey_end = ano_fim or current_year
+
+    try:
+        alertas = await client.buscar_alertas_dengue(
+            geocodigo=geocodigo,
+            doenca=doenca_lower,
+            ew_start=semana_inicio,
+            ew_end=semana_fim,
+            ey_start=ey_start,
+            ey_end=ey_end,
+        )
+    except HttpClientError as exc:
+        logger.warning("buscar_alertas_dengue failed: %s", exc)
+        return _API_INFODENGUE_INDISPONIVEL
+
+    if not alertas:
+        return (
+            f"Nenhum alerta de {doenca_nome} encontrado para {nome_mun} "
+            f"no período SE {semana_inicio}-{semana_fim}/{ey_start}-{ey_end}."
+        )
+
+    rows = [
+        (
+            str(a.semana_epidemiologica or "—"),
+            a.data_inicio_se or "—",
+            a.nivel_descricao or "—",
+            format_number_br(a.casos_estimados, 0) if a.casos_estimados is not None else "—",
+            str(a.casos_notificados) if a.casos_notificados is not None else "—",
+            format_number_br(a.incidencia_100k, 1) if a.incidencia_100k is not None else "—",
+            format_number_br(a.rt, 2) if a.rt is not None else "—",
+        )
+        for a in alertas
+    ]
+
+    header = (
+        f"**Alertas de {doenca_nome} — {nome_mun}** "
+        f"({len(alertas)} semanas, {ey_start}-{ey_end})\n\n"
+    )
+    return header + markdown_table(
+        ["SE", "Início", "Nível", "Casos Est.", "Notificados", "Inc/100k", "Rt"],
+        rows,
+    )
+
+
+async def buscar_situacao_gripe(ctx: Context) -> str:
+    """Busca a situação atual de síndrome respiratória aguda grave (SRAG/gripe).
+
+    Consulta dados do InfoGripe (Fiocruz) com alertas semanais por UF sobre
+    a situação de síndromes gripais, incluindo nível de alerta, casos estimados
+    e tendência. Fonte: boletim semanal InfoGripe.
+
+    Returns:
+        Tabela com situação por UF.
+    """
+    await ctx.info("Buscando situação de SRAG/gripe via InfoGripe...")
+
+    try:
+        alertas = await client.buscar_situacao_gripe()
+    except HttpClientError as exc:
+        logger.warning("buscar_situacao_gripe failed: %s", exc)
+        return _API_INFOGRIPE_INDISPONIVEL
+
+    if not alertas:
+        return "Nenhum dado de InfoGripe disponível no momento."
+
+    # Deduplica por UF (pega a semana mais recente de cada UF)
+    por_uf: set[str] = set()
+    deduplicados = []
+    for a in reversed(alertas):
+        uf = a.uf or "—"
+        if uf not in por_uf:
+            por_uf.add(uf)
+            deduplicados.append(a)
+    deduplicados.reverse()
+
+    rows = [
+        (
+            a.uf or "—",
+            str(a.semana_epidemiologica or "—"),
+            a.situacao or "—",
+            a.nivel or "—",
+            format_number_br(a.casos_estimados, 0) if a.casos_estimados is not None else "—",
+            str(a.casos_notificados) if a.casos_notificados is not None else "—",
+        )
+        for a in deduplicados
+    ]
+
+    header = f"**Situação de SRAG/Gripe** ({len(deduplicados)} UFs)\n\n"
+    return header + markdown_table(
+        ["UF", "SE", "Situação", "Nível", "Casos Est.", "Notificados"],
+        rows,
+    )
+
+
+async def listar_bases_datasus(ctx: Context) -> str:
+    """Lista as principais bases de dados do DATASUS.
+
+    Retorna um catálogo das 9 bases de dados mais relevantes do DATASUS,
+    incluindo sigla, nome, descrição, cobertura temporal e dimensões
+    disponíveis. Útil para entender quais dados de saúde existem no Brasil.
+
+    Returns:
+        Tabela com as bases de dados do DATASUS.
+    """
+    bases = client.listar_bases_datasus()
+
+    rows = [(b.sigla, b.nome, b.descricao, b.cobertura) for b in bases]
+
+    header = f"**Bases de dados do DATASUS** ({len(bases)} bases)\n\n"
+    return header + markdown_table(
+        ["Sigla", "Nome", "Descrição", "Cobertura"],
+        rows,
+    )
+
+
+async def listar_doencas_notificaveis(
+    ctx: Context,
+    categoria: str | None = None,
+) -> str:
+    """Lista doenças de notificação compulsória registradas no SINAN.
+
+    Retorna as doenças e agravos que devem ser notificados ao Sistema de
+    Informação de Agravos de Notificação (SINAN). Filtre por categoria
+    para focar em tipos específicos (ex: "Arbovirose", "Respiratória").
+
+    Args:
+        categoria: Filtrar por categoria (ex: "Arbovirose", "Respiratória",
+            "Zoonose", "Ocupacional", "Infecciosa", "Parasitária", "Alimentar",
+            "Externa"). Se omitido, retorna todas.
+
+    Returns:
+        Tabela com doenças notificáveis.
+    """
+    doencas = client.listar_doencas_notificaveis(categoria)
+
+    if not doencas:
+        filtro = f" na categoria '{categoria}'" if categoria else ""
+        return f"Nenhuma doença notificável encontrada{filtro}."
+
+    rows = [(d.codigo, d.nome, d.categoria) for d in doencas]
+
+    titulo = "Doenças de notificação compulsória (SINAN)"
+    if categoria:
+        titulo += f" — {categoria}"
+    header = f"**{titulo}** ({len(doencas)} doenças)\n\n"
+    return header + markdown_table(["Código", "Doença", "Categoria"], rows)
+
+
+async def buscar_municipio_geocodigo(
+    ctx: Context,
+    nome: str,
+    uf: str | None = None,
+) -> str:
+    """Busca o geocódigo IBGE de um município pelo nome.
+
+    Pesquisa no cadastro de 5.570 municípios brasileiros (IBGE) de forma
+    insensível a acentos. Útil para obter o geocódigo necessário em
+    consultas ao InfoDengue e outros sistemas.
+
+    Args:
+        nome: Nome ou parte do nome do município (ex: "São Paulo", "campinas").
+        uf: Sigla da UF para filtrar (ex: "SP", "RJ"). Se omitido, busca em todos.
+
+    Returns:
+        Tabela com municípios encontrados e seus geocódigos.
+    """
+    resultados = client.buscar_municipio_geocodigo(nome, uf)
+
+    if not resultados:
+        filtro = f" em {uf.upper()}" if uf else ""
+        return f"Nenhum município encontrado para '{nome}'{filtro}."
+
+    # Limitar a 20 resultados
+    total = len(resultados)
+    exibidos = resultados[:20]
+
+    rows = [(m.nome, m.uf, m.geocodigo) for m in exibidos]
+
+    header = f"**Municípios encontrados** ({total} resultados"
+    if total > 20:
+        header += ", exibindo 20"
+    header += ")\n\n"
+    return header + markdown_table(["Município", "UF", "Geocódigo"], rows)

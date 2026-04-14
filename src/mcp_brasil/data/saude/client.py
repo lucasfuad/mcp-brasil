@@ -6,29 +6,50 @@ Endpoints:
     - /profissionais             → buscar_profissionais
     - /tipodeestabelecimento     → listar_tipos_estabelecimento
     - /leitos                    → consultar_leitos
+    - InfoDengue alertcity       → buscar_alertas_dengue
+    - InfoGripe CSV              → buscar_situacao_gripe
 """
 
 from __future__ import annotations
 
+import csv
+import datetime
+import importlib.resources
+import io
+import json
+import logging
+import unicodedata
 from typing import Any
 
-from mcp_brasil._shared.http_client import http_get
+from mcp_brasil._shared.http_client import create_client, http_get
 from mcp_brasil.exceptions import HttpClientError
 
 from .constants import (
+    BASES_DATASUS,
     DEFAULT_LIMIT,
+    DOENCAS_SINAN,
     ESTABELECIMENTOS_URL,
+    INFODENGUE_API_BASE,
+    INFOGRIPE_ALERTA_URL,
     LEITOS_URL,
     MAX_LIMIT,
     MAX_LIMIT_LEITOS,
+    NIVEIS_ALERTA_DENGUE,
     TIPOS_URL,
 )
 from .schemas import (
+    AlertaDengue,
+    AlertaGripe,
+    BaseDATASUS,
+    DoencaNotificavel,
     Estabelecimento,
     EstabelecimentoDetalhe,
     Leito,
+    MunicipioGeocode,
     TipoEstabelecimento,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_list(data: Any, url: str) -> list[dict[str, Any]]:
@@ -236,3 +257,221 @@ async def buscar_estabelecimentos_por_tipo(
     raw = await http_get(ESTABELECIMENTOS_URL, params=params)
     data = _ensure_list(raw, ESTABELECIMENTOS_URL)
     return [_parse_estabelecimento(item) for item in data]
+
+
+# ---------------------------------------------------------------------------
+# Geocode — busca de municípios por nome
+# ---------------------------------------------------------------------------
+
+_geocode_cache: list[dict[str, str]] | None = None
+
+
+def _normalize(text: str) -> str:
+    """Remove accents and lowercase for fuzzy matching."""
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+def _load_geocode_data() -> list[dict[str, str]]:
+    """Load bundled geocode data (cached after first call)."""
+    global _geocode_cache
+    if _geocode_cache is not None:
+        return _geocode_cache
+
+    pkg = importlib.resources.files("mcp_brasil.data.saude")
+    geo_file = pkg.joinpath("geocode_municipios.json")
+    _geocode_cache = json.loads(geo_file.read_text(encoding="utf-8"))
+    return _geocode_cache
+
+
+def buscar_municipio_geocodigo(
+    nome: str,
+    uf: str | None = None,
+) -> list[MunicipioGeocode]:
+    """Search municipalities by name (accent-insensitive).
+
+    In-memory search over bundled JSON data. No HTTP call.
+    Exact matches are returned first, then partial matches.
+
+    Args:
+        nome: Municipality name or partial name.
+        uf: Optional UF abbreviation filter (e.g. "SP", "RJ").
+    """
+    data = _load_geocode_data()
+    nome_norm = _normalize(nome)
+    uf_upper = uf.upper() if uf else None
+
+    exact: list[MunicipioGeocode] = []
+    partial: list[MunicipioGeocode] = []
+    for entry in data:
+        if uf_upper and entry["uf"] != uf_upper:
+            continue
+        entry_norm = _normalize(entry["nome"])
+        if nome_norm not in entry_norm:
+            continue
+        mun = MunicipioGeocode(
+            nome=entry["nome"],
+            uf=entry["uf"],
+            geocodigo=entry["geocodigo"],
+        )
+        if entry_norm == nome_norm:
+            exact.append(mun)
+        else:
+            partial.append(mun)
+    return exact + partial
+
+
+# ---------------------------------------------------------------------------
+# InfoDengue — alertas de arboviroses
+# ---------------------------------------------------------------------------
+
+
+async def buscar_alertas_dengue(
+    *,
+    geocodigo: str,
+    doenca: str = "dengue",
+    ew_start: int = 1,
+    ew_end: int = 52,
+    ey_start: int = 0,
+    ey_end: int = 0,
+) -> list[AlertaDengue]:
+    """Fetch dengue/chikungunya/zika alerts from InfoDengue API.
+
+    API: GET https://info.dengue.mat.br/api/alertcity
+
+    Args:
+        geocodigo: IBGE municipality geocode (7 digits).
+        doenca: Disease key (dengue, chikungunya, zika).
+        ew_start: Epidemiological week start.
+        ew_end: Epidemiological week end.
+        ey_start: Epidemiological year start.
+        ey_end: Epidemiological year end.
+    """
+    params: dict[str, Any] = {
+        "geocode": geocodigo,
+        "disease": doenca,
+        "format": "json",
+        "ew_start": ew_start,
+        "ew_end": ew_end,
+        "ey_start": ey_start,
+        "ey_end": ey_end,
+    }
+
+    raw = await http_get(INFODENGUE_API_BASE, params=params)
+    if not isinstance(raw, list):
+        return []
+
+    results: list[AlertaDengue] = []
+    for item in raw:
+        nivel = item.get("nivel")
+        data_ini = item.get("data_iniSE")
+        if isinstance(data_ini, (int, float)):
+            # API returns timestamp in milliseconds — convert to date string
+            data_ini = datetime.datetime.fromtimestamp(
+                data_ini / 1000, tz=datetime.timezone.utc
+            ).strftime("%Y-%m-%d")
+        results.append(
+            AlertaDengue(
+                semana_epidemiologica=item.get("SE"),
+                data_inicio_se=str(data_ini) if data_ini is not None else None,
+                casos_estimados=item.get("casos_est"),
+                casos_notificados=item.get("casos"),
+                nivel=nivel,
+                nivel_descricao=NIVEIS_ALERTA_DENGUE.get(nivel, "Desconhecido") if nivel else None,
+                incidencia_100k=item.get("p_inc100k"),
+                rt=item.get("Rt"),
+                populacao=item.get("pop"),
+                receptividade=item.get("receptession_level"),
+                transmissao=item.get("transmission_evidence"),
+            )
+        )
+    return results
+
+
+# ---------------------------------------------------------------------------
+# InfoGripe — situação de síndrome gripal
+# ---------------------------------------------------------------------------
+
+
+async def buscar_situacao_gripe() -> list[AlertaGripe]:
+    """Fetch current flu/SRAG alert status from InfoGripe CSV.
+
+    Source: Fiocruz GitLab repository (CSV download).
+    """
+    async with create_client() as http_client:
+        try:
+            response = await http_client.get(INFOGRIPE_ALERTA_URL)
+            response.raise_for_status()
+        except Exception as exc:
+            raise HttpClientError(f"Request to InfoGripe failed: {exc}") from exc
+
+    text = response.text
+    reader = csv.DictReader(io.StringIO(text))
+
+    results: list[AlertaGripe] = []
+    for row in reader:
+        try:
+            results.append(
+                AlertaGripe(
+                    uf=row.get("UF") or row.get("uf"),
+                    semana_epidemiologica=_safe_int(row.get("epiweek") or row.get("SE")),
+                    ano=_safe_int(row.get("epiyear") or row.get("ano")),
+                    situacao=row.get("situation_name") or row.get("situacao"),
+                    nivel=row.get("level") or row.get("nivel"),
+                    casos_estimados=_safe_float(
+                        row.get("estimated_cases") or row.get("casos_est")
+                    ),
+                    casos_notificados=_safe_int(row.get("notified_cases") or row.get("casos")),
+                    limite_inferior=_safe_float(row.get("ci_lower") or row.get("limiar_inferior")),
+                    limite_superior=_safe_float(row.get("ci_upper") or row.get("limiar_superior")),
+                )
+            )
+        except (ValueError, KeyError):
+            continue  # skip malformed rows
+
+    return results
+
+
+def _safe_int(val: str | None) -> int | None:
+    """Parse an int from a string, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_float(val: str | None) -> float | None:
+    """Parse a float from a string, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# In-memory — bases DATASUS e doenças SINAN
+# ---------------------------------------------------------------------------
+
+
+def listar_bases_datasus() -> list[BaseDATASUS]:
+    """Return metadata for DATASUS databases (in-memory)."""
+    return [BaseDATASUS(**b) for b in BASES_DATASUS]
+
+
+def listar_doencas_notificaveis(
+    categoria: str | None = None,
+) -> list[DoencaNotificavel]:
+    """Return notifiable diseases from SINAN (in-memory).
+
+    Args:
+        categoria: Optional category filter (e.g. "Arbovirose", "Respiratória").
+    """
+    doencas = [DoencaNotificavel(**d) for d in DOENCAS_SINAN]
+    if categoria:
+        cat_norm = _normalize(categoria)
+        doencas = [d for d in doencas if cat_norm in _normalize(d.categoria)]
+    return doencas
