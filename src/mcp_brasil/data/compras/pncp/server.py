@@ -5,7 +5,7 @@ This file only registers components. Zero business logic (ADR-001 rule #4).
 
 from fastmcp import FastMCP
 
-from .prompts import investigar_fornecedor
+from .prompts import alienacoes_imoveis_spu, investigar_fornecedor
 from .resources import modalidades_licitacao
 from .tools import (
     buscar_atas,
@@ -53,3 +53,4 @@ mcp.resource("data://modalidades", mime_type="application/json")(modalidades_lic
 
 # Prompts
 mcp.prompt(investigar_fornecedor)
+mcp.prompt(alienacoes_imoveis_spu)

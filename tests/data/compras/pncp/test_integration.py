@@ -66,8 +66,20 @@ class TestPromptsRegistered:
         async with Client(mcp) as c:
             prompts = await c.list_prompts()
             names = {p.name for p in prompts}
-            expected = {"investigar_fornecedor"}
+            expected = {"investigar_fornecedor", "alienacoes_imoveis_spu"}
             assert expected.issubset(names), f"Missing: {expected - names}"
+
+    @pytest.mark.asyncio
+    async def test_alienacoes_spu_prompt_renders(self) -> None:
+        from mcp_brasil.data.compras.pncp.prompts import alienacoes_imoveis_spu
+
+        out = alienacoes_imoveis_spu("20260101", "20260331", uf="DF")
+        assert "modalidade=1" in out
+        assert "modalidade=13" in out
+        assert "Lei 9.636/1998" in out
+        assert "DF" in out
+        # Cross-feature references
+        assert "spu_geo" in out or "spu_imoveis" in out
 
 
 class TestToolExecution:
