@@ -13,12 +13,12 @@ class Ente(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    cod_ibge: int = Field(alias="cod_ibge")
-    ente: str
-    capital: int = 0
-    regiao: str = ""
-    uf: str = ""
-    esfera: str = ""
+    cod_ibge: int | None = None
+    ente: str | None = None
+    capital: int | None = 0
+    regiao: str | None = ""
+    uf: str | None = ""
+    esfera: str | None = ""
     exercicio: int | None = None
     populacao: int | None = None
     cnpj: str | None = None

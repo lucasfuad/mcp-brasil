@@ -29,14 +29,20 @@ async def listar_entes(uf: str | None = None, tipo: str | None = None) -> str:
     """
     entes = await client.listar_entes()
     if uf:
-        entes = [e for e in entes if e.uf.upper() == uf.upper()]
+        entes = [e for e in entes if (e.uf or "").upper() == uf.upper()]
     if tipo:
-        entes = [e for e in entes if e.esfera.upper() == tipo.upper()]
+        entes = [e for e in entes if (e.esfera or "").upper() == tipo.upper()]
     if not entes:
         return "Nenhum ente encontrado com os filtros fornecidos."
 
     rows = [
-        [e.cod_ibge, e.ente, e.uf, ESFERAS.get(e.esfera, e.esfera), e.populacao or ""]
+        [
+            e.cod_ibge or "",
+            e.ente or "",
+            e.uf or "",
+            ESFERAS.get(e.esfera or "", e.esfera or ""),
+            e.populacao or "",
+        ]
         for e in entes[:500]
     ]
     header = f"{len(entes)} entes encontrados (exibindo até 500).\n\n"
