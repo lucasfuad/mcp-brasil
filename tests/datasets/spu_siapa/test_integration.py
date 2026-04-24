@@ -184,6 +184,7 @@ async def test_tools_and_resources_registered(tmp_cache: Path) -> None:
 
     assert "info_spu_siapa" in tools
     assert "buscar_imoveis_siapa" in tools
+    assert "valores_distintos_siapa" in tools
     assert "resumo_regime_siapa" in tools
     assert "resumo_conceituacao_siapa" in tools
     assert "resumo_uf_siapa" in tools

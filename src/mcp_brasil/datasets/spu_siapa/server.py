@@ -12,11 +12,13 @@ from .tools import (
     resumo_regime_siapa,
     resumo_uf_siapa,
     top_municipios_siapa,
+    valores_distintos_siapa,
 )
 
 mcp: FastMCP = FastMCP("mcp-brasil-spu_siapa")
 
 mcp.tool(info_spu_siapa)
+mcp.tool(valores_distintos_siapa)
 mcp.tool(buscar_imoveis_siapa)
 mcp.tool(resumo_regime_siapa)
 mcp.tool(resumo_conceituacao_siapa)

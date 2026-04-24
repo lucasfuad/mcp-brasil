@@ -10,6 +10,7 @@ from mcp_brasil._shared.datasets import executar_query, get_status, refresh_data
 from mcp_brasil._shared.formatting import format_number_br, markdown_table
 
 from . import DATASET_SPEC, DATASET_TABLE
+from .constants import COLUNAS_DISTINCT_PERMITIDAS
 
 
 def _fmt_m2(v: Any) -> str:
@@ -83,19 +84,26 @@ async def buscar_imoveis_siapa(
     Pelo menos um filtro é **altamente recomendado** — sem filtro, retorna
     apenas os primeiros `limite` registros.
 
+    **Dica:** todos os filtros de texto são case/accent-insensitive — você
+    pode passar 'Brasília' ou 'Brasilia', 'São Paulo' ou 'sao paulo'.
+    Para descobrir valores válidos de regime / conceituacao / classe numa
+    coluna, chame primeiro `valores_distintos_siapa(coluna)`.
+
     Args:
         uf: UF (sigla). Ex: 'RJ', 'SP', 'DF'.
-        municipio: Nome do município (match ILIKE parcial).
-        regime: Regime de utilização — ex: 'Aforamento', 'Ocupação',
-            'Uso em Serviço Público', 'Cessão'.
+        municipio: Nome do município (substring, accent-insensitive).
+        regime: Regime de utilização — ex: 'Aforamento',
+            'Inscrição de Ocupação', 'Concessão de Direito Real de Uso'.
         conceituacao: Conceituação do terreno — ex: 'Marinha',
-            'Acrescido de Marinha', 'Marginal'.
-        classe: 'Dominial' ou 'Uso Especial'.
+            'Acrescido de Marinha', 'Marginal de Rio', 'Nacional Interior'.
+            **Atenção:** 'Ilha' NÃO é um valor — ilhas federais vivem em
+            'Nacional Interior' ou na feature `spu_geo`.
+        classe: 'Dominial' (92%) ou 'Uso Especial' (8%).
         rip: RIP do imóvel (match exato ou prefixo).
         limite: Máximo de linhas (padrão 30, máximo 200).
 
     Returns:
-        Tabela com classe, RIP, UF, município, endereço, regime, conceituação e área.
+        Tabela com RIP, UF, município, endereço, regime, conceituação e área.
     """
     limite = max(1, min(limite, 200))
     await ctx.info(
@@ -109,13 +117,15 @@ async def buscar_imoveis_siapa(
         where.append("TRIM(uf) = ?")
         params.append(uf.strip().upper())
     if municipio:
-        where.append("municipio ILIKE ?")
+        # Accent-insensitive match — SIAPA armazena municípios sem acento,
+        # mas o usuário pode passar "Brasília", "São Paulo", etc.
+        where.append("strip_accents(municipio) ILIKE strip_accents(?)")
         params.append(f"%{municipio}%")
     if regime:
-        where.append("regime_utilizacao ILIKE ?")
+        where.append("strip_accents(regime_utilizacao) ILIKE strip_accents(?)")
         params.append(f"%{regime}%")
     if conceituacao:
-        where.append("conceituacao_terreno ILIKE ?")
+        where.append("strip_accents(conceituacao_terreno) ILIKE strip_accents(?)")
         params.append(f"%{conceituacao}%")
     if classe:
         where.append("classe ILIKE ?")
@@ -133,22 +143,26 @@ async def buscar_imoveis_siapa(
 
     rows = await executar_query(DATASET_SPEC, sql, params)
     if not rows:
-        return "Nenhum imóvel encontrado para os filtros informados."
+        return (
+            "Nenhum imóvel encontrado para os filtros informados. "
+            "Dica: use `valores_distintos_siapa` para ver os valores exatos "
+            "de regime/conceituacao/classe presentes na base."
+        )
 
     table_rows = [
         (
-            (r.get("classe") or "—")[:15],
             str(r.get("rip_imovel") or "—"),
             (r.get("uf") or "—").strip(),
             (r.get("municipio") or "—")[:20],
-            (r.get("regime_utilizacao") or "—")[:25],
-            (r.get("conceituacao_terreno") or "—")[:18],
+            (r.get("endereco") or "—")[:40],
+            (r.get("regime_utilizacao") or "—")[:28],
+            (r.get("conceituacao_terreno") or "—")[:22],
             _fmt_m2(r.get("area_uniao_m2")),
         )
         for r in rows
     ]
     return f"**SIAPA — {len(rows)} imóvel(is) encontrado(s)**\n\n" + markdown_table(
-        ["Classe", "RIP", "UF", "Município", "Regime", "Conceituação", "Área União"],
+        ["RIP", "UF", "Município", "Endereço", "Regime", "Conceituação", "Área União"],
         table_rows,
     )
 
@@ -263,6 +277,56 @@ async def resumo_uf_siapa(ctx: Context) -> str:
     return "**SIAPA — imóveis da União por UF**\n\n" + markdown_table(
         ["UF", "Total", "Dominiais", "Uso Especial", "Área União"],
         table_rows,
+    )
+
+
+async def valores_distintos_siapa(
+    ctx: Context,
+    coluna: str,
+    top: int = 30,
+) -> str:
+    """Descobre os valores reais de uma coluna categórica do SIAPA.
+
+    Use **antes** de `buscar_imoveis_siapa` quando não souber o nome exato
+    de um regime, conceituação, tipo ou classe. Retorna os valores únicos
+    ordenados por frequência — o que existe de fato na base vem primeiro.
+
+    Args:
+        coluna: Nome da coluna. Valores permitidos:
+            'classe', 'regime_utilizacao', 'conceituacao_terreno',
+            'tipo_imovel', 'proprietario_oficial', 'nivel_precisao', 'uf'.
+        top: Máximo de valores a retornar (padrão 30).
+
+    Returns:
+        Tabela com valor + contagem, ordenada desc por contagem.
+    """
+    if coluna not in COLUNAS_DISTINCT_PERMITIDAS:
+        return f"Coluna '{coluna}' não suportada. Use uma de: " + ", ".join(
+            sorted(COLUNAS_DISTINCT_PERMITIDAS)
+        )
+    top = max(1, min(top, 100))
+    await ctx.info(f"Listando valores distintos de {coluna}...")
+
+    # coluna já validada contra allowlist → interpolação direta é segura
+    sql = (
+        f'SELECT "{coluna}" AS valor, COUNT(*) AS total '
+        f'FROM "{DATASET_TABLE}" GROUP BY "{coluna}" '
+        f"ORDER BY total DESC LIMIT {top}"
+    )
+    rows = await executar_query(DATASET_SPEC, sql)
+    if not rows:
+        return f"Nenhum valor encontrado para coluna '{coluna}'."
+
+    table_rows = [
+        (
+            str(r.get("valor")) if r.get("valor") is not None else "(null)",
+            format_number_br(int(r.get("total") or 0), 0),
+        )
+        for r in rows
+    ]
+    return (
+        f"**SIAPA — valores distintos em `{coluna}`** ({len(rows)} valores)\n\n"
+        + markdown_table(["Valor", "Ocorrências"], table_rows)
     )
 
 

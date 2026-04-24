@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from . import DATASET_SPEC
-from .constants import CLASSES, CONCEITUACOES, REGIMES_COMUNS
+from .constants import CLASSES, CONCEITUACOES, PROPRIETARIOS, REGIMES_COMUNS
 
 
 def schema_tabela() -> str:
@@ -50,7 +50,7 @@ def schema_tabela() -> str:
         {
             "tabela": DATASET_SPEC.table,
             "colunas": cols,
-            "total_linhas_esperado": "~787.000",
+            "total_linhas_esperado": "~813.000",
             "origem": DATASET_SPEC.source,
         },
         ensure_ascii=False,
@@ -59,12 +59,22 @@ def schema_tabela() -> str:
 
 
 def catalogo_valores() -> str:
-    """Valores comuns nos campos categóricos (regime, conceituação, classe)."""
+    """Valores reais observados nos campos categóricos.
+
+    Extraídos por inspeção direta do DuckDB (snapshot 2026-04, 812k linhas).
+    Para valores atualizados em runtime use `valores_distintos_siapa(coluna)`.
+    """
     return json.dumps(
         {
+            "classes": list(CLASSES),
             "regimes_comuns": list(REGIMES_COMUNS),
             "conceituacoes": list(CONCEITUACOES),
-            "classes": list(CLASSES),
+            "proprietarios": list(PROPRIETARIOS),
+            "observacoes": [
+                "'Ilha' NÃO é um valor de conceituacao_terreno — use spu_geo",
+                "regime_utilizacao tem typo em 'Em Processso de Destinação' (sic)",
+                "'Termo  de Autorização' tem dois espaços seguidos (sic)",
+            ],
         },
         ensure_ascii=False,
         indent=2,
@@ -85,7 +95,7 @@ def info_dataset() -> str:
             "Subsequentes usam cache local DuckDB em ms."
         ),
         "cobertura": (
-            "~787k imóveis da União — Dominiais (aforamento/ocupação com "
+            "~813k imóveis da União — Dominiais (aforamento/ocupação com "
             "particulares) + Uso Especial (órgãos federais). Cobertura "
             "superior ao feature spu_imoveis (Raio-X APF, 54k imóveis)."
         ),

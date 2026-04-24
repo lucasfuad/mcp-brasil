@@ -1,6 +1,6 @@
 """Feature spu_siapa — imóveis da União completos (SIAPA/SPIUNET via SPU).
 
-Dataset grande (~220MB, 787k+ linhas) consolidado pela Secretaria do Patrimônio
+Dataset grande (~220MB, 813k+ linhas) consolidado pela Secretaria do Patrimônio
 da União e republicado no Nextcloud público. Cobre imóveis DOMINIAIS (em
 aforamento/ocupação com particulares) além dos de uso especial — o que o
 feature ``spu_imoveis`` (Raio-X APF) NÃO cobre.
@@ -75,7 +75,7 @@ DATASET_SPEC = DatasetSpec(
 FEATURE_META = FeatureMeta(
     name=DATASET_ID,
     description=(
-        "SIAPA/SPIUNET consolidado: ~787k imóveis da União com consulta SQL "
+        "SIAPA/SPIUNET consolidado: ~813k imóveis da União com consulta SQL "
         "via DuckDB local. Inclui dominiais (aforamento/ocupação) e uso especial. "
         "Opt-in: MCP_BRASIL_DATASETS=spu_siapa."
     ),
