@@ -2,6 +2,21 @@
 
 Todas as mudanças notáveis do mcp-brasil estão documentadas neste arquivo.
 
+## [0.13.0] - 2026-04-24
+
+### Documentation
+
+- Add tce_pa to README, update counters to 42 features / 367 tools
+- **spu:** Add live smoke-test report for new SPU tools
+
+### Features
+
+- **tce_pa:** Add Diário Oficial publications feature
+- **tce_pa:** Add sessões plenárias, jurisprudência and pesquisa integrada
+- **spu_geo:** Add GeoPortal SPU integration via WMS GetFeatureInfo
+- **spu_imoveis:** Add Raio-X APF patrimônio-da-união integration
+- **pncp:** Add alienacoes_imoveis_spu prompt for SPU leilões
+
 ## [0.12.1] - 2026-04-14
 
 ### Bug Fixes
