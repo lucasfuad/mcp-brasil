@@ -1367,6 +1367,7 @@ dependencies = [
     { name = "fastmcp", extra = ["code-mode"] },
     { name = "httpx" },
     { name = "lxml" },
+    { name = "openpyxl" },
     { name = "pydantic" },
     { name = "python-dotenv" },
 ]
@@ -1383,7 +1384,6 @@ llm = [
 dev = [
     { name = "diagrams" },
     { name = "mypy" },
-    { name = "openpyxl" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "respx" },
@@ -1405,6 +1405,7 @@ requires-dist = [
     { name = "fastmcp", extras = ["code-mode"], marker = "extra == 'code-mode'" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "lxml", specifier = ">=5.0" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
@@ -1414,7 +1415,6 @@ provides-extras = ["llm", "code-mode"]
 dev = [
     { name = "diagrams", specifier = ">=0.24" },
     { name = "mypy", specifier = ">=1.13" },
-    { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "respx", specifier = ">=0.22" },

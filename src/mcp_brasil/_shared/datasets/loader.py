@@ -206,6 +206,60 @@ def _download_and_extract_zip(
     return total
 
 
+def _download_binary(url: str, dest: Path, timeout: float) -> int:
+    """Stream a binary file (Parquet/XLSX) to disk — no transcoding."""
+    import httpx
+
+    total = 0
+    with (
+        httpx.Client(follow_redirects=True, timeout=timeout) as client,
+        client.stream("GET", url) as resp,
+        dest.open("wb") as f,
+    ):
+        resp.raise_for_status()
+        for chunk in resp.iter_bytes(chunk_size=1_048_576):
+            f.write(chunk)
+            total += len(chunk)
+    return total
+
+
+def _xlsx_to_csv(xlsx_path: Path, csv_path: Path, sheet: str | int = 0) -> int:
+    """Convert one sheet of an XLSX file to a UTF-8 CSV at ``csv_path``.
+
+    Uses openpyxl in read-only mode (streaming) so big files don't blow
+    memory. Returns bytes written.
+    """
+    import csv as _csv
+
+    from openpyxl import load_workbook  # type: ignore[import-untyped]
+
+    wb = load_workbook(xlsx_path, read_only=True, data_only=True)
+    try:
+        if isinstance(sheet, int):
+            names = wb.sheetnames
+            if sheet < 0 or sheet >= len(names):
+                raise RuntimeError(
+                    f"XLSX sheet index {sheet} out of range (have {len(names)} sheets)"
+                )
+            ws = wb[names[sheet]]
+        else:
+            if sheet not in wb.sheetnames:
+                raise RuntimeError(
+                    f"XLSX has no sheet named {sheet!r}. Available: {wb.sheetnames}"
+                )
+            ws = wb[sheet]
+
+        total = 0
+        with csv_path.open("w", encoding="utf-8", newline="") as f:
+            writer = _csv.writer(f)
+            for row in ws.iter_rows(values_only=True):
+                writer.writerow(["" if v is None else v for v in row])
+            total = f.tell()
+        return total
+    finally:
+        wb.close()
+
+
 def _stage_source(
     spec: DatasetSpec,
     url: str,
@@ -213,7 +267,23 @@ def _stage_source(
     dest: Path,
     timeout: float,
 ) -> int:
-    """Download (+ extract) a single source to ``dest`` as UTF-8."""
+    """Download (+ extract/convert) a single source to ``dest``.
+
+    CSV → UTF-8 (transcoded if needed).
+    XLSX → downloaded then converted to UTF-8 CSV in-place.
+    Parquet → downloaded as-is (binary, no transcoding).
+    """
+    if spec.source_format == "parquet":
+        return _download_binary(url, dest, timeout)
+    if spec.source_format == "xlsx":
+        # openpyxl validates the extension — keep .xlsx literally.
+        xlsx_tmp = dest.parent / f"{dest.stem}.xlsx"
+        _download_binary(url, xlsx_tmp, timeout)
+        try:
+            return _xlsx_to_csv(xlsx_tmp, dest, sheet=spec.xlsx_sheet)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                xlsx_tmp.unlink()
     if zip_member:
         return _download_and_extract_zip(
             url,
@@ -225,12 +295,19 @@ def _stage_source(
     return _download_to_file(url, dest, timeout=timeout, source_encoding=spec.source_encoding)
 
 
-def _render_read_csv_call(csv_tmp: Path, csv_options: dict[str, Any]) -> str:
-    """Render a `read_csv_auto('<file>', ...)` call string."""
-    url_escaped = str(csv_tmp).replace("'", "''")
-    kwargs = _render_csv_options({**csv_options, "encoding": "utf-8"})
+def _render_read_call(staged_path: Path, spec: DatasetSpec) -> str:
+    """Render a DuckDB read call string for the staged source file.
+
+    Dispatches by ``spec.source_format``:
+        - parquet → ``read_parquet('<path>')`` (csv_options ignored)
+        - csv/xlsx → ``read_csv_auto('<path>', ...)`` with csv_options
+    """
+    path_escaped = str(staged_path).replace("'", "''")
+    if spec.source_format == "parquet":
+        return f"read_parquet('{path_escaped}')"
+    kwargs = _render_csv_options({**spec.csv_options, "encoding": "utf-8"})
     kwargs_part = f", {kwargs}" if kwargs else ""
-    return f"read_csv_auto('{url_escaped}'{kwargs_part})"
+    return f"read_csv_auto('{path_escaped}'{kwargs_part})"
 
 
 def _load_into_duckdb(spec: DatasetSpec) -> Manifest:
@@ -301,13 +378,16 @@ def _load_into_duckdb(spec: DatasetSpec) -> Manifest:
     schema_reprs: list[str] = []
     con: duckdb.DuckDBPyConnection | None = None
     try:
+        # Extension of the staged file depends on source_format — parquet
+        # stays binary; csv/xlsx end up as UTF-8 CSV after _stage_source.
+        staged_ext = "parquet" if spec.source_format == "parquet" else "csv"
         for url, zip_member, suffix in sources:
-            # CSV temp lives in the ephemeral dir (no SMB churn, fast I/O).
-            csv_tmp = ephemeral_dir / f"source-{suffix or 'single'}.csv"
-            if csv_tmp.exists():
-                csv_tmp.unlink()
+            # Staged temp lives in the ephemeral dir (no SMB churn, fast I/O).
+            staged_tmp = ephemeral_dir / f"source-{suffix or 'single'}.{staged_ext}"
+            if staged_tmp.exists():
+                staged_tmp.unlink()
             staged = _stage_source(
-                spec, url, zip_member, csv_tmp, _settings.DATASET_DOWNLOAD_TIMEOUT
+                spec, url, zip_member, staged_tmp, _settings.DATASET_DOWNLOAD_TIMEOUT
             )
             logger.info(
                 "Staged source %s (%d bytes); ingesting into DuckDB",
@@ -315,11 +395,11 @@ def _load_into_duckdb(spec: DatasetSpec) -> Manifest:
                 staged,
             )
             table_name = f"{spec.table}_{suffix}" if suffix else spec.table
-            read_csv = _render_read_csv_call(csv_tmp, spec.csv_options)
+            read_call = _render_read_call(staged_tmp, spec)
 
             con = _open_con()
             try:
-                con.execute(f'CREATE OR REPLACE TABLE "{table_name}" AS SELECT * FROM {read_csv}')
+                con.execute(f'CREATE OR REPLACE TABLE "{table_name}" AS SELECT * FROM {read_call}')
                 row = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
                 total_row_count += int(row[0]) if row else 0
                 schema_rows = con.execute(f'DESCRIBE "{table_name}"').fetchall()
@@ -331,7 +411,7 @@ def _load_into_duckdb(spec: DatasetSpec) -> Manifest:
             finally:
                 con.close()
             with contextlib.suppress(FileNotFoundError):
-                csv_tmp.unlink()
+                staged_tmp.unlink()
             logger.info("Ingested %s; connection closed", table_name)
 
         # Final pass: open once to build the UNION ALL BY NAME view.
