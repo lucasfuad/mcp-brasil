@@ -26,7 +26,7 @@ _BASE_URL = (
 _MESES_LOWER = [
     (1, "janeiro"),
     (2, "fevereiro"),
-    (3, "março"),
+    (3, "marco"),  # ANAC usa 'marco' (sem ç) neste path
     (4, "abril"),
     (5, "maio"),
     (6, "junho"),
