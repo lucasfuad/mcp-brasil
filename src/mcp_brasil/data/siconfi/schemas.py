@@ -5,7 +5,7 @@ Zero business logic (ADR-001 rule #4).
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class Ente(BaseModel):
