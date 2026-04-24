@@ -287,6 +287,7 @@ META_ACCESS_TOKEN=seu-token
 | [Meta Ad Library API](docs/reference/meta-ad-library-api.md) | Referência da API de anúncios eleitorais da Meta |
 | [Code Mode](docs/reference/code-mode.md) | Discovery programático + sandbox Python (experimental) |
 | [Desenvolvimento](docs/guide/development.md) | Setup de dev, testes, lint, CI |
+| [Deploy Azure (datasets)](docs/deploy/azure-datasets.md) | Container Apps + Azure Files + warmup automático dos datasets |
 
 ## Desenvolvimento
 
