@@ -97,7 +97,7 @@ jobs:
     env:
       AZURE_RG: rg-mcp-brasil
       ACR_NAME: mcpbrasilacra9d3b3
-      APP_NAME: mcp-brasil
+      APP_NAME: api-mcp-brasil
       IMAGE_NAME: mcp-brasil
 
     steps:

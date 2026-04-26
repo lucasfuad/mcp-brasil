@@ -23,7 +23,7 @@ env:
   AZURE_RG: rg-mcp-brasil
   STORAGE_ACCOUNT: mcpbrasildata51273
   SHARE_NAME: mcp-brasil-cache
-  APP_NAME: mcp-brasil
+  APP_NAME: api-mcp-brasil
   DEFAULT_DATASETS: spu_siapa,tse_candidatos,tse_bens,tse_votacao,tse_redes_sociais,tse_fefc
 
 jobs:
